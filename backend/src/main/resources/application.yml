@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: redeem-code-system
+  datasource:
+    url: "jdbc:mysql://8.137.103.102:3306/redeem_code_system?useUnicode=true&characterEncoding=utf8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true"
+    username: user
+    password: '123456'
+  sql:
+    init:
+      mode: never
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+app:
+  admin:
+    username: ${ADMIN_USERNAME:admin}
+    password: ${ADMIN_PASSWORD:admin123}
+  auth:
+    secret: ${AUTH_SECRET:change-this-secret-to-a-long-random-string}
+    token-ttl-hours: ${AUTH_TOKEN_TTL_HOURS:12}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  check-in:
+    daily-max-users: ${CHECK_IN_DAILY_MAX_USERS:20}
