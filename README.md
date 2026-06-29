@@ -61,6 +61,25 @@ npm run dev
 
 前端地址：`http://localhost:5173`。
 
+服务器部署时，如果前端通过 Vite 预览服务暴露 5173 端口，请使用：
+
+```powershell
+cd frontend
+npm install
+npm run build
+$env:VITE_PROXY_TARGET="http://127.0.0.1:8080"
+npm run preview -- --host 0.0.0.0 --port 5173
+```
+
+这样浏览器访问 `http://8.137.103.102:5173/api/admin/login` 时，Vite 会把 `/api` 请求转发到后端 `8080`，不会落到前端静态服务导致 404。
+
+如果前端不走代理，而是直接请求后端，也可以在构建前设置：
+
+```powershell
+$env:VITE_API_BASE="http://8.137.103.102:8080"
+npm run build
+```
+
 ## 接口示例
 
 批量导入兑换码：
