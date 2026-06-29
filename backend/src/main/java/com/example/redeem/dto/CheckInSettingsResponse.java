@@ -1,6 +1,9 @@
 package com.example.redeem.dto;
 
+import java.util.List;
+
 public record CheckInSettingsResponse(
-        int dailyMaxUsers
+        int dailyMaxUsers,
+        List<PrizeTierSetting> prizeTiers
 ) {
 }

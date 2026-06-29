@@ -36,11 +36,12 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         jdbcTemplate.execute("""
                 create table if not exists system_settings (
                     setting_key varchar(100) not null,
-                    setting_value varchar(255) not null,
+                    setting_value text not null,
                     created_at datetime(6) not null,
                     updated_at datetime(6) not null,
                     primary key (setting_key)
                 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci
                 """);
+        jdbcTemplate.execute("alter table system_settings modify column setting_value text not null");
     }
 }

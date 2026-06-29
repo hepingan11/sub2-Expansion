@@ -23,6 +23,7 @@ import {
   fetchStats,
   getToken,
   login,
+  PrizeTierSetting,
   RedeemCode,
   RedeemCodeStatus,
   Stats,
@@ -113,6 +114,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [importOpen, setImportOpen] = useState(false);
   const [dailyMaxUsers, setDailyMaxUsers] = useState(0);
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
+  const [prizeTiers, setPrizeTiers] = useState<PrizeTierSetting[]>([]);
+  const [prizeTierDrafts, setPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
@@ -131,6 +134,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       setTotalPages(Math.max(pageData.totalPages, 1));
       setDailyMaxUsers(settingsData.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settingsData.dailyMaxUsers));
+      setPrizeTiers(settingsData.prizeTiers);
+      setPrizeTierDrafts(toPrizeTierDrafts(settingsData.prizeTiers));
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
@@ -171,13 +176,21 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       return;
     }
 
+    const parsedPrizeTiers = parsePrizeTierDrafts(prizeTierDrafts);
+    if (typeof parsedPrizeTiers === 'string') {
+      setError(parsedPrizeTiers);
+      return;
+    }
+
     setSettingsSaving(true);
     setSettingsSaved(false);
     setError('');
     try {
-      const settings = await updateCheckInSettings(nextDailyMaxUsers);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, parsedPrizeTiers);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
+      setPrizeTiers(settings.prizeTiers);
+      setPrizeTierDrafts(toPrizeTierDrafts(settings.prizeTiers));
       setSettingsSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存设置失败');
@@ -208,26 +221,93 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </section>
 
-      <form className="settings-strip" onSubmit={saveCheckInSettings}>
-        <div className="settings-title">
-          <Settings2 size={18} />
-          <span>每日签到上限</span>
+      <form className="settings-panel" onSubmit={saveCheckInSettings}>
+        <div className="settings-panel-head">
+          <div className="settings-title">
+            <Settings2 size={18} />
+            <span>签到设置</span>
+          </div>
+          <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, prizeTiers, prizeTierDrafts)}>
+            <CheckCircle2 size={17} />
+            {settingsSaving ? '保存中...' : '保存'}
+          </button>
+          {settingsSaved && <span className="settings-saved">已保存</span>}
         </div>
-        <input
-          type="number"
-          min="0"
-          step="1"
-          value={dailyMaxUsersDraft}
-          onChange={(event) => {
-            setDailyMaxUsersDraft(event.target.value);
-            setSettingsSaved(false);
-          }}
-        />
-        <button className="ghost-btn" type="submit" disabled={settingsSaving || dailyMaxUsersDraft === String(dailyMaxUsers)}>
-          <CheckCircle2 size={17} />
-          {settingsSaving ? '保存中...' : '保存'}
-        </button>
-        {settingsSaved && <span className="settings-saved">已保存</span>}
+
+        <div className="settings-grid">
+          <label>
+            每日签到上限
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={dailyMaxUsersDraft}
+              onChange={(event) => {
+                setDailyMaxUsersDraft(event.target.value);
+                setSettingsSaved(false);
+              }}
+            />
+          </label>
+
+          <div className="tier-editor">
+            <div className="tier-editor-head">
+              <span>兑换码金额概率</span>
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => {
+                  setPrizeTierDrafts((current) => [...current, { amount: '1.00', probability: '1.00' }]);
+                  setSettingsSaved(false);
+                }}
+              >
+                <Plus size={17} />
+                添加
+              </button>
+            </div>
+            <div className="tier-list">
+              {prizeTierDrafts.map((tier, index) => (
+                <div className="tier-row" key={index}>
+                  <label>
+                    金额
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={tier.amount}
+                      onChange={(event) => updatePrizeTierDraft(index, 'amount', event.target.value, setPrizeTierDrafts, setSettingsSaved)}
+                    />
+                  </label>
+                  <label>
+                    概率 %
+                    <input
+                      type="number"
+                      min="0.01"
+                      max="100"
+                      step="0.01"
+                      value={tier.probability}
+                      onChange={(event) => updatePrizeTierDraft(index, 'probability', event.target.value, setPrizeTierDrafts, setSettingsSaved)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="删除"
+                    disabled={prizeTierDrafts.length <= 1}
+                    onClick={() => {
+                      setPrizeTierDrafts((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                      setSettingsSaved(false);
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className={`probability-total ${prizeTierTotal(prizeTierDrafts) === 100 ? 'is-valid' : ''}`}>
+              合计 {prizeTierTotal(prizeTierDrafts).toFixed(2)}%
+            </div>
+          </div>
+        </div>
       </form>
 
       <section className="toolbar">
@@ -488,6 +568,69 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
 
 function formatDateTime(value: string) {
   return value ? value.replace('T', ' ').slice(0, 19) : '-';
+}
+
+function toPrizeTierDrafts(prizeTiers: PrizeTierSetting[]) {
+  const tiers = prizeTiers.length ? prizeTiers : [{ amount: 1, probability: 100 }];
+  return tiers.map((tier) => ({
+    amount: Number(tier.amount).toFixed(2),
+    probability: Number(tier.probability).toFixed(2)
+  }));
+}
+
+function updatePrizeTierDraft(
+  index: number,
+  key: 'amount' | 'probability',
+  value: string,
+  setPrizeTierDrafts: React.Dispatch<React.SetStateAction<{ amount: string; probability: string }[]>>,
+  setSettingsSaved: React.Dispatch<React.SetStateAction<boolean>>
+) {
+  setPrizeTierDrafts((current) => current.map((tier, currentIndex) => (
+    currentIndex === index ? { ...tier, [key]: value } : tier
+  )));
+  setSettingsSaved(false);
+}
+
+function parsePrizeTierDrafts(drafts: { amount: string; probability: string }[]): PrizeTierSetting[] | string {
+  if (drafts.length === 0) {
+    return '请至少配置一个兑换码金额概率';
+  }
+
+  const tiers = drafts.map((tier) => ({
+    amount: Number(tier.amount),
+    probability: Number(tier.probability)
+  }));
+
+  if (tiers.some((tier) => !Number.isFinite(tier.amount) || tier.amount <= 0)) {
+    return '金额必须大于 0';
+  }
+  if (tiers.some((tier) => !Number.isFinite(tier.probability) || tier.probability <= 0 || tier.probability > 100)) {
+    return '概率必须大于 0 且不超过 100';
+  }
+  if (Math.abs(tiers.reduce((total, tier) => total + tier.probability, 0) - 100) > 0.001) {
+    return '所有金额概率之和必须等于 100%';
+  }
+
+  return tiers;
+}
+
+function prizeTierTotal(drafts: { amount: string; probability: string }[]) {
+  return drafts.reduce((total, tier) => {
+    const probability = Number(tier.probability);
+    return Number.isFinite(probability) ? total + probability : total;
+  }, 0);
+}
+
+function settingsChanged(
+  dailyMaxUsers: number,
+  dailyMaxUsersDraft: string,
+  prizeTiers: PrizeTierSetting[],
+  prizeTierDrafts: { amount: string; probability: string }[]
+) {
+  if (dailyMaxUsersDraft !== String(dailyMaxUsers)) {
+    return true;
+  }
+  return JSON.stringify(toPrizeTierDrafts(prizeTiers)) !== JSON.stringify(prizeTierDrafts);
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

@@ -52,6 +52,12 @@ export interface BatchImportResult {
 
 export interface CheckInSettings {
   dailyMaxUsers: number;
+  prizeTiers: PrizeTierSetting[];
+}
+
+export interface PrizeTierSetting {
+  amount: number;
+  probability: number;
 }
 
 export function getToken() {
@@ -83,10 +89,10 @@ export async function fetchCheckInSettings() {
   return request<CheckInSettings>('/api/admin/settings/check-in');
 }
 
-export async function updateCheckInSettings(dailyMaxUsers: number) {
+export async function updateCheckInSettings(dailyMaxUsers: number, prizeTiers: PrizeTierSetting[]) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers })
+    body: JSON.stringify({ dailyMaxUsers, prizeTiers })
   });
 }
 

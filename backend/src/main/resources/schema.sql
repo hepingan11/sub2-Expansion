@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS daily_checkin_limits (
 
 CREATE TABLE IF NOT EXISTS system_settings (
     setting_key VARCHAR(100) NOT NULL,
-    setting_value VARCHAR(255) NOT NULL,
+    setting_value TEXT NOT NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (setting_key)

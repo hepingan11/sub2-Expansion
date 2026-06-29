@@ -22,11 +22,11 @@ public class AdminSettingsController {
 
     @GetMapping("/check-in")
     public CheckInSettingsResponse getCheckInSettings() {
-        return new CheckInSettingsResponse(checkInSettingsService.getDailyMaxUsers());
+        return checkInSettingsService.getCheckInSettings();
     }
 
     @PutMapping("/check-in")
     public CheckInSettingsResponse updateCheckInSettings(@Valid @RequestBody UpdateCheckInSettingsRequest request) {
-        return new CheckInSettingsResponse(checkInSettingsService.updateDailyMaxUsers(request.dailyMaxUsers()));
+        return checkInSettingsService.updateCheckInSettings(request.dailyMaxUsers(), request.prizeTiers());
     }
 }

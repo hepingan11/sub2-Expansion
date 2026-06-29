@@ -6,6 +6,7 @@ import com.example.redeem.model.RedeemCode;
 import com.example.redeem.model.RedeemCodeStatus;
 import com.example.redeem.repository.CheckInRecordRepository;
 import com.example.redeem.repository.RedeemCodeRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -88,6 +89,11 @@ class CheckInServiceTest {
             AppProperties appProperties = new AppProperties();
             appProperties.getCheckIn().setDailyMaxUsers(1000);
             return appProperties;
+        }
+
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
         }
     }
 }
