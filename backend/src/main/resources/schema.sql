@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS redeem_codes (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    code VARCHAR(32) NOT NULL,
+    code VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     user_id VARCHAR(64) NULL,
     sign_date DATE NULL,
     amount DECIMAL(10, 2) NOT NULL,

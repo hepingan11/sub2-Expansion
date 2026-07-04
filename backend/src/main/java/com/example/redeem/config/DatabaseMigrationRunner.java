@@ -23,6 +23,7 @@ public class DatabaseMigrationRunner implements ApplicationRunner {
         jdbcTemplate.execute("update redeem_codes set status = 'ASSIGNED' where status = 'ISSUED'");
         jdbcTemplate.execute("alter table redeem_codes modify column user_id varchar(64) null");
         jdbcTemplate.execute("alter table redeem_codes modify column sign_date date null");
+        jdbcTemplate.execute("alter table redeem_codes modify column code varchar(32) character set utf8mb4 collate utf8mb4_bin not null");
         jdbcTemplate.execute("alter table redeem_codes modify column status enum('AVAILABLE','ASSIGNED','USED','VOIDED') not null");
         jdbcTemplate.execute("""
                 create table if not exists daily_checkin_limits (

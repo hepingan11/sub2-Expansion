@@ -168,6 +168,6 @@ public class RedeemCodeService {
     }
 
     private String normalizeCode(String code) {
-        return StringUtils.hasText(code) ? code.trim().toUpperCase() : null;
+        return StringUtils.hasText(code) ? code.trim() : null;
     }
 }

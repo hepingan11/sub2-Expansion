@@ -87,7 +87,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
-              placeholder="默认 admin123"
+              placeholder=""
             />
           </label>
           {error && <div className="error-line">{error}</div>}
