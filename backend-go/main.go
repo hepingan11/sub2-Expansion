@@ -44,14 +44,14 @@ const (
 	dailyMaxUsersKey = "check_in.daily_max_users"
 	prizeTiersKey    = "check_in.prize_tiers"
 
-	sub2APIBaseURLKey       = "sub2api.base_url"
-	sub2APIAdminAPIKeyKey   = "sub2api.admin_api_key"
-	sub2APIJWTKey           = "sub2api.jwt"
-	sub2APIAdminEmailKey    = "sub2api.admin_email"
-	sub2APIAdminPasswordKey = "sub2api.admin_password"
-	sub2APIAuthModeKey      = "sub2api.auth_mode"
-	sub2APITimeoutKey       = "sub2api.timeout_seconds"
-	sub2APIJWTExpiresAtKey  = "sub2api.jwt_expires_at"
+	sub2APIBaseURLKey        = "sub2api.base_url"
+	sub2APIAdminAPIKeyKey    = "sub2api.admin_api_key"
+	sub2APIAccessTokenKey    = "sub2api.jwt"
+	sub2APIAdminEmailKey     = "sub2api.admin_email"
+	sub2APIAdminPasswordKey  = "sub2api.admin_password"
+	sub2APIAuthModeKey       = "sub2api.auth_mode"
+	sub2APITimeoutKey        = "sub2api.timeout_seconds"
+	sub2APITokenExpiresAtKey = "sub2api.jwt_expires_at"
 )
 
 const sub2APITokenRefreshBefore = 10 * time.Minute
@@ -76,7 +76,6 @@ type Config struct {
 	CheckInDailyMaxUsers int
 	Sub2APIBaseURL       string
 	Sub2APIAdminAPIKey   string
-	Sub2APIJWT           string
 	Sub2APIAdminEmail    string
 	Sub2APIAdminPassword string
 	Sub2APITimeout       time.Duration
@@ -374,6 +373,38 @@ func (s *SystemSetting) BeforeUpdate(*gorm.DB) error {
 	return nil
 }
 
+type FavoriteSite struct {
+	ID          uint64   `gorm:"primaryKey;column:id" json:"id"`
+	Icon        string   `gorm:"column:icon;size:500;not null" json:"icon"`
+	URL         string   `gorm:"column:url;size:500;not null;uniqueIndex:uk_favorite_sites_url" json:"url"`
+	Name        string   `gorm:"column:name;size:100;not null" json:"name"`
+	Description string   `gorm:"column:description;size:500;not null" json:"description"`
+	SortOrder   int      `gorm:"column:sort_order;not null;index:idx_favorite_sites_group_sort" json:"sort"`
+	Group       string   `gorm:"column:group_name;size:100;not null;index:idx_favorite_sites_group_sort" json:"group"`
+	CreatedAt   JSONTime `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt   JSONTime `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (FavoriteSite) TableName() string {
+	return "favorite_sites"
+}
+
+func (s *FavoriteSite) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if s.CreatedAt.Time.IsZero() {
+		s.CreatedAt = now
+	}
+	if s.UpdatedAt.Time.IsZero() {
+		s.UpdatedAt = now
+	}
+	return nil
+}
+
+func (s *FavoriteSite) BeforeUpdate(*gorm.DB) error {
+	s.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
 type AdminLoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -402,6 +433,15 @@ type BatchImportCodesResponse struct {
 	Imported        int      `json:"imported"`
 	Duplicated      int      `json:"duplicated"`
 	DuplicatedCodes []string `json:"duplicatedCodes"`
+}
+
+type FavoriteSiteRequest struct {
+	Icon        string `json:"icon"`
+	URL         string `json:"url"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Sort        int    `json:"sort"`
+	Group       string `json:"group"`
 }
 
 type DashboardStatsResponse struct {
@@ -455,8 +495,6 @@ type Sub2APIConfig struct {
 	AuthMode         string `json:"authMode"`
 	AdminAPIKey      string `json:"adminApiKey,omitempty"`
 	AdminAPIKeySet   bool   `json:"adminApiKeySet"`
-	JWT              string `json:"jwt,omitempty"`
-	JWTSet           bool   `json:"jwtSet"`
 	AdminEmail       string `json:"adminEmail"`
 	AdminPassword    string `json:"adminPassword,omitempty"`
 	AdminPasswordSet bool   `json:"adminPasswordSet"`
@@ -526,7 +564,6 @@ func loadConfig() Config {
 		CheckInDailyMaxUsers: envInt("CHECK_IN_DAILY_MAX_USERS", 20),
 		Sub2APIBaseURL:       strings.TrimRight(env("SUB2API_BASE_URL", ""), "/"),
 		Sub2APIAdminAPIKey:   env("SUB2API_ADMIN_API_KEY", ""),
-		Sub2APIJWT:           env("SUB2API_JWT", ""),
 		Sub2APIAdminEmail:    env("SUB2API_ADMIN_EMAIL", env("SUB2API_ADMIN_USERNAME", "")),
 		Sub2APIAdminPassword: env("SUB2API_ADMIN_PASSWORD", ""),
 		Sub2APITimeout:       time.Duration(envInt("SUB2API_TIMEOUT_SECONDS", 15)) * time.Second,
@@ -636,12 +673,29 @@ func (app *App) migrate() error {
 			updated_at DATETIME(6) NOT NULL,
 			PRIMARY KEY (setting_key)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE TABLE IF NOT EXISTS favorite_sites (
+			id BIGINT NOT NULL AUTO_INCREMENT,
+			icon VARCHAR(500) NOT NULL DEFAULT '',
+			url VARCHAR(500) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+			description VARCHAR(500) NOT NULL DEFAULT '',
+			sort_order INT NOT NULL DEFAULT 0,
+			group_name VARCHAR(100) NOT NULL DEFAULT '',
+			created_at DATETIME(6) NOT NULL,
+			updated_at DATETIME(6) NOT NULL,
+			PRIMARY KEY (id),
+			UNIQUE KEY uk_favorite_sites_url (url),
+			KEY idx_favorite_sites_group_sort (group_name, sort_order)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 		`UPDATE redeem_codes SET status = 'ASSIGNED' WHERE status = 'ISSUED'`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN user_id VARCHAR(64) NULL`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN sign_date DATE NULL`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN code VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN status ENUM('AVAILABLE','ASSIGNED','USED','VOIDED') NOT NULL`,
 		`ALTER TABLE system_settings MODIFY COLUMN setting_value TEXT NOT NULL`,
+		`ALTER TABLE favorite_sites MODIFY COLUMN icon VARCHAR(500) NOT NULL DEFAULT ''`,
+		`ALTER TABLE favorite_sites MODIFY COLUMN description VARCHAR(500) NOT NULL DEFAULT ''`,
+		`ALTER TABLE favorite_sites MODIFY COLUMN group_name VARCHAR(100) NOT NULL DEFAULT ''`,
 	}
 
 	for _, statement := range sqlStatements {
@@ -674,6 +728,12 @@ func (app *App) router() *gin.Engine {
 	protected.POST("/codes/batch-import", app.batchImportCodes)
 	protected.PUT("/codes/:id", app.updateCode)
 	protected.DELETE("/codes/:id", app.deleteCode)
+	protected.GET("/favorite-sites", app.listFavoriteSites)
+	protected.GET("/favorite-sites/groups", app.listFavoriteSiteGroups)
+	protected.GET("/favorite-sites/:id", app.getFavoriteSite)
+	protected.POST("/favorite-sites", app.createFavoriteSite)
+	protected.PUT("/favorite-sites/:id", app.updateFavoriteSite)
+	protected.DELETE("/favorite-sites/:id", app.deleteFavoriteSite)
 	protected.GET("/stats", app.stats)
 	protected.GET("/settings/check-in", app.getCheckInSettings)
 	protected.PUT("/settings/check-in", app.updateCheckInSettings)
@@ -776,6 +836,111 @@ func (app *App) deleteCode(c *gin.Context) {
 		return
 	}
 	if err := app.db.Delete(&code).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (app *App) listFavoriteSites(c *gin.Context) {
+	page := max(queryInt(c, "page", 0), 0)
+	size := min(max(queryInt(c, "size", 10), 1), 100)
+	var total int64
+	var sites []FavoriteSite
+
+	query := app.applyFavoriteSiteFilters(app.db.Model(&FavoriteSite{}), c)
+	if err := query.Count(&total).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := query.Order("sort_order ASC, created_at DESC, id DESC").Limit(size).Offset(page * size).Find(&sites).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(size) - 1) / int64(size))
+	}
+	c.JSON(http.StatusOK, PageResponse[FavoriteSite]{
+		Content:       sites,
+		TotalElements: total,
+		TotalPages:    totalPages,
+		Number:        page,
+		Size:          size,
+	})
+}
+
+func (app *App) listFavoriteSiteGroups(c *gin.Context) {
+	var groups []string
+	if err := app.db.Model(&FavoriteSite{}).
+		Where("group_name <> ''").
+		Distinct().
+		Order("group_name ASC").
+		Pluck("group_name", &groups).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, groups)
+}
+
+func (app *App) getFavoriteSite(c *gin.Context) {
+	site, ok := app.findFavoriteSiteByID(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, site)
+}
+
+func (app *App) createFavoriteSite(c *gin.Context) {
+	var req FavoriteSiteRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	site, err := normalizeFavoriteSiteRequest(req)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	if err := app.db.Create(&site).Error; err != nil {
+		handleDBError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, site)
+}
+
+func (app *App) updateFavoriteSite(c *gin.Context) {
+	site, ok := app.findFavoriteSiteByID(c)
+	if !ok {
+		return
+	}
+	var req FavoriteSiteRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	normalized, err := normalizeFavoriteSiteRequest(req)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	site.Icon = normalized.Icon
+	site.URL = normalized.URL
+	site.Name = normalized.Name
+	site.Description = normalized.Description
+	site.SortOrder = normalized.SortOrder
+	site.Group = normalized.Group
+	if err := app.db.Save(&site).Error; err != nil {
+		handleDBError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, site)
+}
+
+func (app *App) deleteFavoriteSite(c *gin.Context) {
+	site, ok := app.findFavoriteSiteByID(c)
+	if !ok {
+		return
+	}
+	if err := app.db.Delete(&site).Error; err != nil {
 		serverError(c, err)
 		return
 	}
@@ -1071,11 +1236,6 @@ func (app *App) sub2APIAuthHeader(ctx context.Context, cfg Sub2APIConfig) (strin
 			return "", "", businessConflict("Sub2API 未配置：当前认证方式需要 Admin API Key")
 		}
 		return "x-api-key", cfg.AdminAPIKey, nil
-	case "jwt":
-		if cfg.JWT == "" {
-			return "", "", businessConflict("Sub2API 未配置：当前认证方式需要 JWT")
-		}
-		return "Authorization", "Bearer " + cfg.JWT, nil
 	default:
 		token, err := app.sub2APILogin(ctx, cfg)
 		if err != nil {
@@ -1130,7 +1290,7 @@ func (app *App) sub2APILogin(ctx context.Context, cfg Sub2APIConfig) (string, er
 		return "", businessConflict("Sub2API 未配置：请设置 SUB2API_BASE_URL")
 	}
 	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
-		return "", businessConflict("Sub2API 未配置：请设置 SUB2API_ADMIN_API_KEY、SUB2API_JWT，或 SUB2API_ADMIN_EMAIL/SUB2API_ADMIN_PASSWORD")
+		return "", businessConflict("Sub2API 未配置：请设置 SUB2API_ADMIN_API_KEY，或 SUB2API_ADMIN_EMAIL/SUB2API_ADMIN_PASSWORD")
 	}
 
 	app.sub2APITokenMu.Lock()
@@ -1202,7 +1362,7 @@ func (app *App) sub2APILogin(ctx context.Context, cfg Sub2APIConfig) (string, er
 }
 
 func (app *App) loadStoredSub2APIToken() (string, time.Time, bool) {
-	token, found, err := app.getSetting(sub2APIJWTKey)
+	token, found, err := app.getSetting(sub2APIAccessTokenKey)
 	if err != nil {
 		log.Printf("load Sub2API token failed: %v", err)
 		return "", time.Time{}, false
@@ -1210,7 +1370,7 @@ func (app *App) loadStoredSub2APIToken() (string, time.Time, bool) {
 	if !found || strings.TrimSpace(token) == "" {
 		return "", time.Time{}, false
 	}
-	rawExpiresAt, found, err := app.getSetting(sub2APIJWTExpiresAtKey)
+	rawExpiresAt, found, err := app.getSetting(sub2APITokenExpiresAtKey)
 	if err != nil {
 		log.Printf("load Sub2API token expiry failed: %v", err)
 		return "", time.Time{}, false
@@ -1230,10 +1390,10 @@ func (app *App) saveSub2APIToken(token string, expiresAt time.Time) error {
 	if strings.TrimSpace(token) == "" || expiresAt.IsZero() {
 		return nil
 	}
-	if err := app.saveSetting(sub2APIJWTKey, strings.TrimSpace(token)); err != nil {
+	if err := app.saveSetting(sub2APIAccessTokenKey, strings.TrimSpace(token)); err != nil {
 		return err
 	}
-	return app.saveSetting(sub2APIJWTExpiresAtKey, strconv.FormatInt(expiresAt.Unix(), 10))
+	return app.saveSetting(sub2APITokenExpiresAtKey, strconv.FormatInt(expiresAt.Unix(), 10))
 }
 
 func parseSub2APITokenExpiry(value string) (time.Time, error) {
@@ -1315,10 +1475,8 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		return CheckInSettingsResponse{}, err
 	}
 	sub2api.AdminAPIKeySet = sub2api.AdminAPIKey != ""
-	sub2api.JWTSet = sub2api.JWT != ""
 	sub2api.AdminPasswordSet = sub2api.AdminPassword != ""
 	sub2api.AdminAPIKey = ""
-	sub2api.JWT = ""
 	sub2api.AdminPassword = ""
 	return CheckInSettingsResponse{DailyMaxUsers: dailyMaxUsers, PrizeTiers: tiers, Sub2API: sub2api}, nil
 }
@@ -1332,12 +1490,10 @@ func (app *App) effectiveSub2APIConfig() (Sub2APIConfig, error) {
 		BaseURL:          app.cfg.Sub2APIBaseURL,
 		AuthMode:         defaultSub2APIAuthMode(app.cfg),
 		AdminAPIKey:      app.cfg.Sub2APIAdminAPIKey,
-		JWT:              app.cfg.Sub2APIJWT,
 		AdminEmail:       app.cfg.Sub2APIAdminEmail,
 		AdminPassword:    app.cfg.Sub2APIAdminPassword,
 		TimeoutSeconds:   timeoutSeconds,
 		AdminAPIKeySet:   app.cfg.Sub2APIAdminAPIKey != "",
-		JWTSet:           app.cfg.Sub2APIJWT != "",
 		AdminPasswordSet: app.cfg.Sub2APIAdminPassword != "",
 	}
 	var err error
@@ -1348,9 +1504,6 @@ func (app *App) effectiveSub2APIConfig() (Sub2APIConfig, error) {
 		return Sub2APIConfig{}, err
 	}
 	if cfg.AdminAPIKey, err = app.settingOrDefault(sub2APIAdminAPIKeyKey, cfg.AdminAPIKey); err != nil {
-		return Sub2APIConfig{}, err
-	}
-	if cfg.JWT, err = app.settingOrDefault(sub2APIJWTKey, cfg.JWT); err != nil {
 		return Sub2APIConfig{}, err
 	}
 	if cfg.AdminEmail, err = app.settingOrDefault(sub2APIAdminEmailKey, cfg.AdminEmail); err != nil {
@@ -1369,7 +1522,6 @@ func (app *App) effectiveSub2APIConfig() (Sub2APIConfig, error) {
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	cfg.AuthMode = normalizeSub2APIAuthMode(cfg.AuthMode)
 	cfg.AdminAPIKey = strings.TrimSpace(cfg.AdminAPIKey)
-	cfg.JWT = strings.TrimSpace(cfg.JWT)
 	cfg.AdminEmail = strings.TrimSpace(cfg.AdminEmail)
 	return cfg, nil
 }
@@ -1395,11 +1547,6 @@ func (app *App) saveSub2APIConfig(cfg Sub2APIConfig) error {
 			return err
 		}
 	}
-	if strings.TrimSpace(cfg.JWT) != "" {
-		if err := app.saveSetting(sub2APIJWTKey, strings.TrimSpace(cfg.JWT)); err != nil {
-			return err
-		}
-	}
 	if cfg.AdminPassword != "" {
 		if err := app.saveSetting(sub2APIAdminPasswordKey, cfg.AdminPassword); err != nil {
 			return err
@@ -1413,15 +1560,12 @@ func defaultSub2APIAuthMode(cfg Config) string {
 	if cfg.Sub2APIAdminAPIKey != "" {
 		return "admin_api_key"
 	}
-	if cfg.Sub2APIJWT != "" {
-		return "jwt"
-	}
 	return "password"
 }
 
 func normalizeSub2APIAuthMode(value string) string {
 	switch strings.TrimSpace(value) {
-	case "admin_api_key", "jwt", "password":
+	case "admin_api_key", "password":
 		return strings.TrimSpace(value)
 	default:
 		return "password"
@@ -1519,12 +1663,12 @@ func (app *App) savePrizeTiers(tiers []PrizeTier) error {
 
 func (app *App) getSetting(key string) (string, bool, error) {
 	var setting SystemSetting
-	err := app.db.First(&setting, "setting_key = ?", key).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", false, nil
+	tx := app.db.Where("setting_key = ?", key).Limit(1).Find(&setting)
+	if tx.Error != nil {
+		return "", false, tx.Error
 	}
-	if err != nil {
-		return "", false, err
+	if tx.RowsAffected == 0 {
+		return "", false, nil
 	}
 	return setting.SettingValue, true, nil
 }
@@ -1605,6 +1749,17 @@ func (app *App) applyCodeFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
 	return query
 }
 
+func (app *App) applyFavoriteSiteFilters(query *gorm.DB, c *gin.Context) *gorm.DB {
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		pattern := "%" + keyword + "%"
+		query = query.Where("name LIKE ? OR url LIKE ? OR description LIKE ? OR group_name LIKE ?", pattern, pattern, pattern, pattern)
+	}
+	if group := strings.TrimSpace(c.Query("group")); group != "" {
+		query = query.Where("group_name = ?", group)
+	}
+	return query
+}
+
 func (app *App) findCodeByID(c *gin.Context) (RedeemCode, bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1623,6 +1778,24 @@ func (app *App) findCodeByID(c *gin.Context) (RedeemCode, bool) {
 	return code, true
 }
 
+func (app *App) findFavoriteSiteByID(c *gin.Context) (FavoriteSite, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		badRequest(c, "invalid id")
+		return FavoriteSite{}, false
+	}
+	var site FavoriteSite
+	if err := app.db.First(&site, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, APIError{Message: "收藏网站不存在: " + c.Param("id")})
+			return FavoriteSite{}, false
+		}
+		serverError(c, err)
+		return FavoriteSite{}, false
+	}
+	return site, true
+}
+
 func validateCodeRequest(c *gin.Context, req *RedeemCodeRequest) bool {
 	if req.Amount.Cmp(decimal.NewFromFloat(0.01)) < 0 {
 		badRequest(c, "amount must be greater than or equal to 0.01")
@@ -1636,6 +1809,83 @@ func validateCodeRequest(c *gin.Context, req *RedeemCodeRequest) bool {
 		return false
 	}
 	return true
+}
+
+func normalizeFavoriteSiteRequest(req FavoriteSiteRequest) (FavoriteSite, error) {
+	name := strings.TrimSpace(req.Name)
+	rawURL := strings.TrimSpace(req.URL)
+	icon := strings.TrimSpace(req.Icon)
+	description := strings.TrimSpace(req.Description)
+	group := strings.TrimSpace(req.Group)
+
+	if name == "" {
+		return FavoriteSite{}, errors.New("网站名称不能为空")
+	}
+	if len([]rune(name)) > 100 {
+		return FavoriteSite{}, errors.New("网站名称不能超过 100 个字符")
+	}
+	if rawURL == "" {
+		return FavoriteSite{}, errors.New("网站 URL 不能为空")
+	}
+	normalizedURL, err := normalizeHTTPURL(rawURL)
+	if err != nil {
+		return FavoriteSite{}, errors.New("网站 URL 必须是有效的 http/https 地址")
+	}
+	if icon != "" {
+		if !isFavoriteSitePresetIcon(icon) {
+			if _, err := normalizeHTTPURL(icon); err != nil {
+				return FavoriteSite{}, errors.New("图标地址必须是有效的 http/https 地址或预设图标")
+			}
+		}
+	}
+	if len([]rune(icon)) > 500 {
+		return FavoriteSite{}, errors.New("图标地址不能超过 500 个字符")
+	}
+	if len([]rune(description)) > 500 {
+		return FavoriteSite{}, errors.New("简介不能超过 500 个字符")
+	}
+	if len([]rune(group)) > 100 {
+		return FavoriteSite{}, errors.New("分组不能超过 100 个字符")
+	}
+	if req.Sort < 0 {
+		return FavoriteSite{}, errors.New("排序必须是大于等于 0 的整数")
+	}
+
+	return FavoriteSite{
+		Icon:        icon,
+		URL:         normalizedURL,
+		Name:        name,
+		Description: description,
+		SortOrder:   req.Sort,
+		Group:       group,
+	}, nil
+}
+
+func isFavoriteSitePresetIcon(value string) bool {
+	if !strings.HasPrefix(value, "preset:") {
+		return false
+	}
+	name := strings.TrimPrefix(value, "preset:")
+	if name == "" || len(name) > 40 {
+		return false
+	}
+	for _, char := range name {
+		if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeHTTPURL(value string) (string, error) {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("invalid url")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", errors.New("invalid url scheme")
+	}
+	return parsed.String(), nil
 }
 
 func (app *App) applyCodeRequest(code *RedeemCode, req RedeemCodeRequest, creating bool) error {
@@ -1812,7 +2062,7 @@ func serverError(c *gin.Context, err error) {
 
 func handleDBError(c *gin.Context, err error) {
 	if isDuplicateEntry(err) {
-		conflict(c, "数据冲突：兑换码或用户签到记录可能已存在")
+		conflict(c, "数据冲突：相同记录可能已存在")
 		return
 	}
 	serverError(c, err)

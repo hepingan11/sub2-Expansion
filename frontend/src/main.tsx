@@ -2,16 +2,27 @@ import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   CalendarCheck2,
+  ChevronDown,
   CheckCircle2,
   CircleDollarSign,
+  Bookmark,
+  BookOpen,
+  Code2,
+  ExternalLink,
+  Globe2,
   Home,
+  KeyRound,
   LogOut,
+  Mail,
   Pencil,
   Plus,
   Search,
   Settings2,
   ShieldCheck,
+  Star,
   Trash2,
+  UserRound,
+  Wrench,
   X
 } from 'lucide-react';
 import {
@@ -19,10 +30,16 @@ import {
   clearToken,
   CodePayload,
   createCode,
+  createFavoriteSite,
   deleteCode,
+  deleteFavoriteSite,
   fetchCheckInSettings,
   fetchCodes,
+  fetchFavoriteSiteGroups,
+  fetchFavoriteSites,
   fetchStats,
+  FavoriteSite,
+  FavoriteSitePayload,
   getToken,
   login,
   PrizeTierSetting,
@@ -31,11 +48,12 @@ import {
   Stats,
   Sub2APISettings,
   updateCheckInSettings,
-  updateCode
+  updateCode,
+  updateFavoriteSite
 } from './api';
 import './styles.css';
 
-type DashboardSection = 'home' | 'checkins' | 'system';
+type DashboardSection = 'home' | 'checkins' | 'favorites' | 'system';
 
 const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
 const emptySub2APISettings: Sub2APISettings = {
@@ -43,8 +61,6 @@ const emptySub2APISettings: Sub2APISettings = {
   authMode: 'password',
   adminApiKey: '',
   adminApiKeySet: false,
-  jwt: '',
-  jwtSet: false,
   adminEmail: '',
   adminPassword: '',
   adminPasswordSet: false,
@@ -57,6 +73,29 @@ const statusText: Record<RedeemCodeStatus, string> = {
   USED: '已使用',
   VOIDED: '已作废'
 };
+
+const favoriteIconPresets = [
+  { value: 'preset:bookmark', label: '书签', icon: Bookmark },
+  { value: 'preset:globe', label: '网站', icon: Globe2 },
+  { value: 'preset:book', label: '文档', icon: BookOpen },
+  { value: 'preset:tool', label: '工具', icon: Wrench },
+  { value: 'preset:star', label: '星标', icon: Star },
+  { value: 'preset:code', label: '代码', icon: Code2 },
+  { value: 'preset:mail', label: '邮箱', icon: Mail },
+  { value: 'preset:key', label: '密钥', icon: KeyRound },
+  { value: 'preset:user', label: '账号', icon: UserRound }
+];
+
+const favoriteEmojiPresets = [
+  { value: 'preset:rocket', label: '启动', emoji: '🚀' },
+  { value: 'preset:fire', label: '热门', emoji: '🔥' },
+  { value: 'preset:bulb', label: '灵感', emoji: '💡' },
+  { value: 'preset:heart', label: '喜欢', emoji: '❤️' },
+  { value: 'preset:money', label: '财务', emoji: '💰' },
+  { value: 'preset:chart', label: '数据', emoji: '📈' },
+  { value: 'preset:lock', label: '安全', emoji: '🔒' },
+  { value: 'preset:gift', label: '福利', emoji: '🎁' }
+];
 
 function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -130,6 +169,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [editing, setEditing] = useState<RedeemCode | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [favoriteSites, setFavoriteSites] = useState<FavoriteSite[]>([]);
+  const [favoriteGroups, setFavoriteGroups] = useState<string[]>([]);
+  const [favoriteKeyword, setFavoriteKeyword] = useState('');
+  const [favoriteGroup, setFavoriteGroup] = useState('');
+  const [favoritePage, setFavoritePage] = useState(0);
+  const [favoriteTotalPages, setFavoriteTotalPages] = useState(1);
+  const [editingFavorite, setEditingFavorite] = useState<FavoriteSite | null>(null);
+  const [favoriteModalOpen, setFavoriteModalOpen] = useState(false);
   const [dailyMaxUsers, setDailyMaxUsers] = useState(0);
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
   const [prizeTiers, setPrizeTiers] = useState<PrizeTierSetting[]>([]);
@@ -165,9 +212,34 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function loadFavoriteSites(nextPage = favoritePage) {
+    setLoading(true);
+    setError('');
+    try {
+      const [pageData, groupsData] = await Promise.all([
+        fetchFavoriteSites({ keyword: favoriteKeyword, group: favoriteGroup, page: nextPage, size: 10 }),
+        fetchFavoriteSiteGroups()
+      ]);
+      setFavoriteSites(pageData.content);
+      setFavoriteGroups(groupsData);
+      setFavoritePage(pageData.number);
+      setFavoriteTotalPages(Math.max(pageData.totalPages, 1));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载收藏网站失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     load(0);
   }, []);
+
+  useEffect(() => {
+    if (activeSection === 'favorites') {
+      loadFavoriteSites(0);
+    }
+  }, [activeSection]);
 
   const summary = useMemo(() => [
     { label: '总兑换码', value: stats.total, tone: 'ink' },
@@ -180,6 +252,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const navItems = [
     { key: 'home' as const, label: '首页', icon: Home },
     { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
+    { key: 'favorites' as const, label: '网站收藏', icon: Bookmark },
     { key: 'system' as const, label: '系统设置', icon: Settings2 }
   ];
 
@@ -194,6 +267,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
     await deleteCode(id);
     load(page);
+  }
+
+  async function removeFavoriteSite(id: number) {
+    if (!window.confirm('确认删除这个收藏网站？')) {
+      return;
+    }
+    await deleteFavoriteSite(id);
+    loadFavoriteSites(favoritePage);
   }
 
   async function saveCheckInSettings(event: FormEvent) {
@@ -269,7 +350,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       <header className="topbar">
         <div>
           <span className="eyebrow">Daily Check-in Reward</span>
-          <h1>{activeSection === 'home' ? '首页' : activeSection === 'checkins' ? '签到管理' : '系统设置'}</h1>
+          <h1>{sectionTitle(activeSection)}</h1>
         </div>
         <button className="ghost-btn" onClick={logout} title="退出登录">
           <LogOut size={18} />
@@ -506,6 +587,108 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </>
       )}
 
+      {activeSection === 'favorites' && (
+        <>
+      <section className="toolbar favorite-toolbar">
+        <div className="search-box">
+          <Search size={18} />
+          <input
+            value={favoriteKeyword}
+            onChange={(event) => setFavoriteKeyword(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && loadFavoriteSites(0)}
+            placeholder="搜索名称、URL、简介或分组"
+          />
+        </div>
+        <select
+          value={favoriteGroup}
+          onChange={(event) => setFavoriteGroup(event.target.value)}
+        >
+          <option value="">全部分组</option>
+          {favoriteGroups.map((group) => (
+            <option key={group} value={group}>{group}</option>
+          ))}
+        </select>
+        <button className="ghost-btn" onClick={() => loadFavoriteSites(0)}>
+          <Search size={17} />
+          查询
+        </button>
+        <button
+          className="primary-btn"
+          onClick={() => {
+            setEditingFavorite(null);
+            setFavoriteModalOpen(true);
+          }}
+        >
+          <Plus size={18} />
+          新增网站
+        </button>
+      </section>
+
+      <section className="table-panel favorite-table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th>图标</th>
+              <th>名称</th>
+              <th>URL</th>
+              <th>简介</th>
+              <th>分组</th>
+              <th>排序</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {favoriteSites.map((site) => (
+              <tr key={site.id}>
+                <td>
+                  <SiteIcon site={site} />
+                </td>
+                <td className="site-name-cell">{site.name}</td>
+                <td>
+                  <a className="site-url" href={site.url} target="_blank" rel="noreferrer">
+                    <ExternalLink size={15} />
+                    {site.url}
+                  </a>
+                </td>
+                <td className="site-description-cell">{site.description || '-'}</td>
+                <td>{site.group || '-'}</td>
+                <td>{site.sort}</td>
+                <td>{formatDateTime(site.createdAt)}</td>
+                <td>
+                  <div className="row-actions">
+                    <button title="编辑" onClick={() => { setEditingFavorite(site); setFavoriteModalOpen(true); }}>
+                      <Pencil size={16} />
+                    </button>
+                    <button title="删除" onClick={() => removeFavoriteSite(site.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!loading && favoriteSites.length === 0 && (
+              <tr>
+                <td colSpan={8} className="empty-cell">暂无收藏网站</td>
+              </tr>
+            )}
+            {loading && (
+              <tr>
+                <td colSpan={8} className="empty-cell">加载中...</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <footer className="pager">
+        <button disabled={favoritePage <= 0} onClick={() => loadFavoriteSites(favoritePage - 1)}>上一页</button>
+        <span>{favoritePage + 1} / {favoriteTotalPages}</span>
+        <button disabled={favoritePage + 1 >= favoriteTotalPages} onClick={() => loadFavoriteSites(favoritePage + 1)}>下一页</button>
+      </footer>
+        </>
+      )}
+
       {activeSection === 'system' && (
         <form className="settings-panel" onSubmit={saveCheckInSettings}>
           <div className="settings-panel-head">
@@ -551,7 +734,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 >
                   <option value="password">管理员账号密码</option>
                   <option value="admin_api_key">Admin API Key</option>
-                  <option value="jwt">JWT</option>
                 </select>
               </label>
               <label>
@@ -579,14 +761,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                   placeholder={sub2api.adminApiKeySet ? '已设置，留空则不修改' : '可选，优先级最高'}
                 />
               </label>
-              <label>
-                JWT
-                <input
-                  value={sub2apiDraft.jwt ?? ''}
-                  onChange={(event) => updateSub2APIDraft('jwt', event.target.value, setSub2apiDraft, setSettingsSaved)}
-                  placeholder={sub2api.jwtSet ? '已设置，留空则不修改' : '可选'}
-                />
-              </label>
             </div>
           </div>
         </form>
@@ -612,8 +786,319 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           }}
         />
       )}
+
+      {favoriteModalOpen && (
+        <FavoriteSiteModal
+          site={editingFavorite}
+          groups={favoriteGroups}
+          onClose={() => setFavoriteModalOpen(false)}
+          onSaved={() => {
+            setFavoriteModalOpen(false);
+            loadFavoriteSites(editingFavorite ? favoritePage : 0);
+          }}
+        />
+      )}
       </section>
     </main>
+  );
+}
+
+function SiteIcon({ site }: { site: FavoriteSite }) {
+  const preset = findFavoriteIconPreset(site.icon);
+  if (preset) {
+    const Icon = preset.icon;
+    return (
+      <div className="site-icon preset" title={preset.label} aria-hidden="true">
+        <Icon size={18} />
+      </div>
+    );
+  }
+  const emojiPreset = findFavoriteEmojiPreset(site.icon);
+  if (emojiPreset) {
+    return (
+      <div className="site-icon emoji" title={emojiPreset.label} aria-hidden="true">
+        {emojiPreset.emoji}
+      </div>
+    );
+  }
+  if (site.icon) {
+    return <img className="site-icon" src={site.icon} alt="" loading="lazy" />;
+  }
+  return (
+    <div className="site-icon fallback" aria-hidden="true">
+      {site.name.trim().slice(0, 1).toUpperCase() || <Bookmark size={15} />}
+    </div>
+  );
+}
+
+function FavoriteIconPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [customMode, setCustomMode] = useState(isCustomFavoriteIcon(value));
+  const preset = findFavoriteIconPreset(value);
+  const emojiPreset = findFavoriteEmojiPreset(value);
+
+  function select(value: string) {
+    onChange(value);
+    setCustomMode(false);
+    setOpen(false);
+  }
+
+  return (
+    <div className="icon-picker">
+      <span className="field-label">图标</span>
+      <button type="button" className="icon-picker-trigger" onClick={() => setOpen((current) => !current)}>
+        <span className="icon-picker-current">
+          <IconPreview value={value} />
+          <span>{iconLabel(value)}</span>
+        </span>
+        <ChevronDown size={17} />
+      </button>
+      {open && (
+        <div className="icon-picker-menu">
+          <div className="icon-picker-section">
+            <span>基础</span>
+            <div className="icon-preset-grid compact">
+              <button type="button" className={value === '' ? 'is-selected' : ''} onClick={() => select('')}>
+                <span className="empty-icon-dot" />
+                无图标
+              </button>
+              <button
+                type="button"
+                className={customMode || isCustomFavoriteIcon(value) ? 'is-selected' : ''}
+                onClick={() => {
+                  setCustomMode(true);
+                  onChange(isCustomFavoriteIcon(value) ? value : '');
+                }}
+              >
+                <ExternalLink size={17} />
+                自定义地址
+              </button>
+            </div>
+          </div>
+
+          <div className="icon-picker-section">
+            <span>预设图标</span>
+            <div className="icon-preset-grid compact">
+              {favoriteIconPresets.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={preset?.value === item.value ? 'is-selected' : ''}
+                    onClick={() => select(item.value)}
+                    title={item.label}
+                  >
+                    <Icon size={18} />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="icon-picker-section">
+            <span>Emoji 图标</span>
+            <div className="icon-preset-grid emoji-grid compact">
+              {favoriteEmojiPresets.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={emojiPreset?.value === item.value ? 'is-selected' : ''}
+                  onClick={() => select(item.value)}
+                  title={item.label}
+                >
+                  <span className="emoji-mark">{item.emoji}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {customMode && (
+            <label className="icon-custom-url">
+              自定义图标地址
+              <input
+                value={isCustomFavoriteIcon(value) ? value : ''}
+                onChange={(event) => onChange(event.target.value)}
+                placeholder="https://example.com/favicon.ico"
+              />
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IconPreview({ value }: { value: string }) {
+  const preset = findFavoriteIconPreset(value);
+  if (preset) {
+    const Icon = preset.icon;
+    return <Icon size={18} />;
+  }
+  const emojiPreset = findFavoriteEmojiPreset(value);
+  if (emojiPreset) {
+    return <span className="emoji-mark">{emojiPreset.emoji}</span>;
+  }
+  if (isCustomFavoriteIcon(value)) {
+    return <ExternalLink size={17} />;
+  }
+  return <span className="empty-icon-dot" />;
+}
+
+function findFavoriteIconPreset(value: string) {
+  return favoriteIconPresets.find((item) => item.value === value);
+}
+
+function findFavoriteEmojiPreset(value: string) {
+  return favoriteEmojiPresets.find((item) => item.value === value);
+}
+
+function isCustomFavoriteIcon(value: string) {
+  return value !== '' && !findFavoriteIconPreset(value) && !findFavoriteEmojiPreset(value);
+}
+
+function iconLabel(value: string) {
+  const preset = findFavoriteIconPreset(value);
+  if (preset) return preset.label;
+  const emojiPreset = findFavoriteEmojiPreset(value);
+  if (emojiPreset) return emojiPreset.label;
+  if (isCustomFavoriteIcon(value)) return '自定义地址';
+  return '无图标';
+}
+
+function FavoriteSiteModal({ site, groups, onClose, onSaved }: { site: FavoriteSite | null; groups: string[]; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<FavoriteSitePayload>({
+    icon: site?.icon ?? '',
+    url: site?.url ?? '',
+    name: site?.name ?? '',
+    description: site?.description ?? '',
+    sort: site?.sort ?? 0,
+    group: site?.group ?? ''
+  });
+  const initialGroupMode = site?.group && !groups.includes(site.group) ? '__new__' : (site?.group ?? '');
+  const [groupChoice, setGroupChoice] = useState(initialGroupMode);
+  const [newGroup, setNewGroup] = useState(initialGroupMode === '__new__' ? site?.group ?? '' : '');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  function patch<K extends keyof FavoriteSitePayload>(key: K, value: FavoriteSitePayload[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const selectedGroup = groupChoice === '__new__' ? newGroup : groupChoice;
+      const payload = {
+        ...form,
+        group: selectedGroup.trim(),
+        sort: Number(form.sort)
+      };
+      if (site) {
+        await updateFavoriteSite(site.id, payload);
+      } else {
+        await createFavoriteSite(payload);
+      }
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal favorite-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">{site ? 'Edit Site' : 'New Site'}</span>
+            <h2>{site ? '编辑收藏网站' : '新增收藏网站'}</h2>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} />
+          </button>
+        </div>
+
+        <label>
+          网站名称
+          <input value={form.name} onChange={(event) => patch('name', event.target.value)} maxLength={100} required />
+        </label>
+        <label>
+          URL
+          <input value={form.url} onChange={(event) => patch('url', event.target.value)} placeholder="https://example.com" required />
+        </label>
+        <FavoriteIconPicker value={form.icon} onChange={(value) => patch('icon', value)} />
+        <label>
+          简介
+          <textarea
+            className="compact-textarea"
+            value={form.description}
+            onChange={(event) => patch('description', event.target.value)}
+            maxLength={500}
+            rows={3}
+          />
+        </label>
+        <div className="modal-grid two">
+          <div className="group-editor">
+            <label>
+              分组
+              <select
+                value={groupChoice}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setGroupChoice(value);
+                  if (value !== '__new__') {
+                    patch('group', value);
+                  }
+                }}
+              >
+                <option value="">不分组</option>
+                {groups.map((group) => (
+                  <option key={group} value={group}>{group}</option>
+                ))}
+                <option value="__new__">新建分组</option>
+              </select>
+            </label>
+            {groupChoice === '__new__' && (
+              <label>
+                新分组名称
+                <input
+                  value={newGroup}
+                  onChange={(event) => {
+                    setNewGroup(event.target.value);
+                    patch('group', event.target.value);
+                  }}
+                  maxLength={100}
+                  placeholder="工具 / 文档 / 常用"
+                />
+              </label>
+            )}
+          </div>
+          <label>
+            排序
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.sort}
+              onChange={(event) => patch('sort', Number(event.target.value))}
+              required
+            />
+          </label>
+        </div>
+
+        {error && <div className="error-line">{error}</div>}
+        <button className="primary-btn wide" type="submit" disabled={saving}>
+          <CheckCircle2 size={18} />
+          {saving ? '保存中...' : '保存'}
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -762,6 +1247,19 @@ function formatDateTime(value: string) {
   return value ? value.replace('T', ' ').slice(0, 19) : '-';
 }
 
+function sectionTitle(section: DashboardSection) {
+  switch (section) {
+    case 'home':
+      return '首页';
+    case 'checkins':
+      return '签到管理';
+    case 'favorites':
+      return '网站收藏';
+    case 'system':
+      return '系统设置';
+  }
+}
+
 function toPrizeTierDrafts(prizeTiers: PrizeTierSetting[]) {
   const tiers = prizeTiers.length ? prizeTiers : [{ amount: 1, probability: 100 }];
   return tiers.map((tier) => ({
@@ -775,7 +1273,6 @@ function toSub2APIDraft(settings: Sub2APISettings): Sub2APISettings {
     ...settings,
     authMode: settings.authMode || 'password',
     adminApiKey: '',
-    jwt: '',
     adminPassword: '',
     timeoutSeconds: settings.timeoutSeconds || 15
   };
@@ -796,7 +1293,7 @@ function parseSub2APIDraft(draft: Sub2APISettings): Sub2APISettings | string {
   if (!Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0) {
     return 'Sub2API 超时秒数必须是大于 0 的整数';
   }
-  if (!['admin_api_key', 'jwt', 'password'].includes(draft.authMode)) {
+  if (!['admin_api_key', 'password'].includes(draft.authMode)) {
     return '请选择有效的 Sub2API 认证方式';
   }
   return {
@@ -804,7 +1301,6 @@ function parseSub2APIDraft(draft: Sub2APISettings): Sub2APISettings | string {
     authMode: draft.authMode,
     baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
     adminApiKey: draft.adminApiKey?.trim() ?? '',
-    jwt: draft.jwt?.trim() ?? '',
     adminEmail: draft.adminEmail.trim(),
     timeoutSeconds
   };

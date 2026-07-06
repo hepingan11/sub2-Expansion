@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sub2API Admin"
+  short_description: "Manage Sub2API admin APIs from Codex"
+  default_prompt: "Use $sub2api-admin to list recent redeem codes and check Sub2API admin connectivity."

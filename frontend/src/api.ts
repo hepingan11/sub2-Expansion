@@ -57,6 +57,27 @@ export interface BatchImportResult {
   duplicatedCodes: string[];
 }
 
+export interface FavoriteSite {
+  id: number;
+  icon: string;
+  url: string;
+  name: string;
+  description: string;
+  sort: number;
+  group: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FavoriteSitePayload {
+  icon: string;
+  url: string;
+  name: string;
+  description: string;
+  sort: number;
+  group: string;
+}
+
 export interface CheckInSettings {
   dailyMaxUsers: number;
   prizeTiers: PrizeTierSetting[];
@@ -70,11 +91,9 @@ export interface PrizeTierSetting {
 
 export interface Sub2APISettings {
   baseUrl: string;
-  authMode: 'admin_api_key' | 'jwt' | 'password';
+  authMode: 'admin_api_key' | 'password';
   adminApiKey?: string;
   adminApiKeySet: boolean;
-  jwt?: string;
-  jwtSet: boolean;
   adminEmail: string;
   adminPassword?: string;
   adminPasswordSet: boolean;
@@ -150,6 +169,40 @@ export async function updateCode(id: number, payload: CodePayload) {
 
 export async function deleteCode(id: number) {
   return request<void>(`/api/admin/codes/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function fetchFavoriteSites(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+  return request<PageResult<FavoriteSite>>(`/api/admin/favorite-sites?${query.toString()}`);
+}
+
+export async function fetchFavoriteSiteGroups() {
+  return request<string[]>('/api/admin/favorite-sites/groups');
+}
+
+export async function createFavoriteSite(payload: FavoriteSitePayload) {
+  return request<FavoriteSite>('/api/admin/favorite-sites', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateFavoriteSite(id: number, payload: FavoriteSitePayload) {
+  return request<FavoriteSite>(`/api/admin/favorite-sites/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteFavoriteSite(id: number) {
+  return request<void>(`/api/admin/favorite-sites/${id}`, {
     method: 'DELETE'
   });
 }

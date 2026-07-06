@@ -77,9 +77,9 @@ go run .
 
 ## 说明
 
-- 复用 Java 后端的 MySQL 表结构，并在启动时执行等价迁移。
+- MySQL 表结构，并在启动时执行等价迁移。
 - 管理员 token 格式兼容原 Java HMAC token，不是 JWT。
 - MySQL 连接池默认限制为 `MaxOpenConns=10`、`MaxIdleConns=5`，更适合小内存服务器。
 - 兑换码金额和概率用 decimal 处理，JSON 仍返回数字格式。
-- 签到成功时会按抽中的金额调用 Sub2API `POST /api/v1/admin/redeem-codes/generate` 生成 `balance` 兑换码，再把生成的码绑定到本地签到记录。`SUB2API_*` 环境变量作为默认值，也可以在后台“签到设置”里覆盖远程地址、认证方式、管理员账号密码/API Key/JWT 和超时时间。
-- 使用管理员账号密码认证 Sub2API 时，后端会定时预热 access token，并保存到 `system_settings`：`sub2api.jwt` 存 token，`sub2api.jwt_expires_at` 存过期时间。后续请求会优先复用未过期 token，临近过期再自动登录刷新。
+- 签到成功时会按抽中的金额调用 Sub2API `POST /api/v1/admin/redeem-codes/generate` 生成 `balance` 兑换码，再把生成的码绑定到本地签到记录。`SUB2API_*` 环境变量作为默认值，也可以在后台“签到设置”里覆盖远程地址、认证方式、管理员账号密码/API Key 和超时时间。
+- 使用管理员账号密码认证 Sub2API 时，后端会定时预热 access token，并保存到 `system_settings`。后续请求会优先复用未过期 token，临近过期再自动登录刷新。

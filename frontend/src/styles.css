@@ -526,6 +526,10 @@ textarea {
   margin-bottom: 14px;
 }
 
+.favorite-toolbar {
+  grid-template-columns: minmax(260px, 1fr) 180px auto auto;
+}
+
 .search-box {
   position: relative;
 }
@@ -575,6 +579,58 @@ tr:last-child td {
 .code-cell {
   font-family: "Cascadia Mono", "Consolas", monospace;
   font-weight: 700;
+}
+
+.site-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+}
+
+.site-icon.fallback {
+  color: #fff;
+  background: var(--green);
+  font-weight: 800;
+}
+
+.site-icon.preset {
+  color: var(--green);
+  background: rgba(22, 115, 74, 0.1);
+}
+
+.site-icon.emoji {
+  font-size: 19px;
+  background: #fff8e8;
+}
+
+.site-name-cell {
+  font-weight: 700;
+}
+
+.site-url {
+  max-width: 300px;
+  color: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.site-url:hover {
+  color: var(--ink);
+}
+
+.site-description-cell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .amount-cell {
@@ -670,6 +726,143 @@ tr:last-child td {
   font-size: 26px;
 }
 
+.favorite-modal {
+  width: min(640px, 100%);
+}
+
+.modal-grid.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.group-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.field-label,
+.icon-preset-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.icon-picker {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.icon-picker-trigger {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.icon-picker-current {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-picker-current svg {
+  color: var(--green);
+}
+
+.icon-picker-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 12px;
+  max-height: min(460px, 62vh);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 20px 50px rgba(29, 37, 35, 0.18);
+  padding: 12px;
+}
+
+.icon-picker-section {
+  display: grid;
+  gap: 8px;
+}
+
+.icon-picker-section > span,
+.icon-custom-url {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.icon-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.icon-preset-grid.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.icon-preset-grid button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.icon-preset-grid button:hover,
+.icon-preset-grid button.is-selected {
+  border-color: rgba(22, 115, 74, 0.5);
+  color: var(--green);
+  background: rgba(22, 115, 74, 0.08);
+}
+
+.emoji-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.icon-custom-url {
+  display: grid;
+  gap: 7px;
+}
+
+.empty-icon-dot {
+  width: 18px;
+  height: 18px;
+  border: 1px dashed var(--muted);
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.emoji-mark {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.compact-textarea {
+  min-height: 92px;
+  font-family: inherit;
+}
+
 .wide {
   width: 100%;
 }
@@ -723,6 +916,10 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
+  .favorite-toolbar {
+    grid-template-columns: 1fr;
+  }
+
   .settings-panel-head,
   .settings-grid {
     grid-template-columns: 1fr;
@@ -738,6 +935,22 @@ tr:last-child td {
 
   .settings-panel-head {
     align-items: stretch;
+  }
+
+  .modal-grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .icon-preset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .icon-preset-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .emoji-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
