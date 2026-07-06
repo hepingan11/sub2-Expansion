@@ -1,8 +1,10 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  CalendarCheck2,
   CheckCircle2,
   CircleDollarSign,
+  Home,
   LogOut,
   Pencil,
   Plus,
@@ -27,12 +29,27 @@ import {
   RedeemCode,
   RedeemCodeStatus,
   Stats,
+  Sub2APISettings,
   updateCheckInSettings,
   updateCode
 } from './api';
 import './styles.css';
 
-const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0 };
+type DashboardSection = 'home' | 'checkins' | 'system';
+
+const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
+const emptySub2APISettings: Sub2APISettings = {
+  baseUrl: '',
+  authMode: 'password',
+  adminApiKey: '',
+  adminApiKeySet: false,
+  jwt: '',
+  jwtSet: false,
+  adminEmail: '',
+  adminPassword: '',
+  adminPasswordSet: false,
+  timeoutSeconds: 15
+};
 
 const statusText: Record<RedeemCodeStatus, string> = {
   AVAILABLE: '未绑定',
@@ -101,6 +118,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 }
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
+  const [activeSection, setActiveSection] = useState<DashboardSection>('home');
   const [codes, setCodes] = useState<RedeemCode[]>([]);
   const [stats, setStats] = useState<Stats>(emptyStats);
   const [keyword, setKeyword] = useState('');
@@ -116,6 +134,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
   const [prizeTiers, setPrizeTiers] = useState<PrizeTierSetting[]>([]);
   const [prizeTierDrafts, setPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
+  const [sub2api, setSub2api] = useState<Sub2APISettings>(emptySub2APISettings);
+  const [sub2apiDraft, setSub2apiDraft] = useState<Sub2APISettings>(emptySub2APISettings);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
@@ -136,6 +156,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       setDailyMaxUsersDraft(String(settingsData.dailyMaxUsers));
       setPrizeTiers(settingsData.prizeTiers);
       setPrizeTierDrafts(toPrizeTierDrafts(settingsData.prizeTiers));
+      setSub2api(settingsData.sub2api);
+      setSub2apiDraft(toSub2APIDraft(settingsData.sub2api));
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
@@ -154,6 +176,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     { label: '已使用', value: stats.used, tone: 'blue' },
     { label: '已作废', value: stats.voided, tone: 'red' }
   ], [stats]);
+  const amountOptions = useMemo(() => toAmountOptions(stats.amountStats, prizeTierDrafts), [stats.amountStats, prizeTierDrafts]);
+  const navItems = [
+    { key: 'home' as const, label: '首页', icon: Home },
+    { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
+    { key: 'system' as const, label: '系统设置', icon: Settings2 }
+  ];
 
   function logout() {
     clearToken();
@@ -186,11 +214,19 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     setSettingsSaved(false);
     setError('');
     try {
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, parsedPrizeTiers);
+      const parsedSub2API = parseSub2APIDraft(sub2apiDraft);
+      if (typeof parsedSub2API === 'string') {
+        setError(parsedSub2API);
+        return;
+      }
+
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, parsedPrizeTiers, parsedSub2API);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       setPrizeTiers(settings.prizeTiers);
       setPrizeTierDrafts(toPrizeTierDrafts(settings.prizeTiers));
+      setSub2api(settings.sub2api);
+      setSub2apiDraft(toSub2APIDraft(settings.sub2api));
       setSettingsSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存设置失败');
@@ -200,11 +236,40 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   return (
-    <main className="app-shell">
+    <main className="admin-layout">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-mark compact">
+            <ShieldCheck size={21} />
+          </div>
+          <div>
+            <strong>兑换码管理</strong>
+            <span>Daily Check-in</span>
+          </div>
+        </div>
+        <nav className="side-nav">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                className={activeSection === item.key ? 'is-active' : ''}
+                onClick={() => setActiveSection(item.key)}
+                type="button"
+              >
+                <Icon size={18} />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <section className="app-shell">
       <header className="topbar">
         <div>
           <span className="eyebrow">Daily Check-in Reward</span>
-          <h1>兑换码管理系统</h1>
+          <h1>{activeSection === 'home' ? '首页' : activeSection === 'checkins' ? '签到管理' : '系统设置'}</h1>
         </div>
         <button className="ghost-btn" onClick={logout} title="退出登录">
           <LogOut size={18} />
@@ -212,6 +277,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </button>
       </header>
 
+      {error && <div className="error-banner">{error}</div>}
+
+      {activeSection === 'home' && (
+        <>
       <section className="summary-grid">
         {summary.map((item) => (
           <article key={item.label} className={`metric metric-${item.tone}`}>
@@ -221,73 +290,111 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         ))}
       </section>
 
-      <form className="settings-panel" onSubmit={saveCheckInSettings}>
-        <div className="settings-panel-head">
+      <section className="amount-stats-panel">
+        <div className="amount-stats-head">
+          <CircleDollarSign size={18} />
+          <span>金额库存统计</span>
+        </div>
+        <div className="amount-stats-grid">
+          {stats.amountStats.map((item) => (
+            <article className="amount-stat" key={item.amount}>
+              <strong>{Number(item.amount).toFixed(2)} 元</strong>
+              <div>
+                <span>总数</span>
+                <b>{item.total}</b>
+              </div>
+              <div>
+                <span>未使用</span>
+                <b>{item.available}</b>
+              </div>
+            </article>
+          ))}
+          {stats.amountStats.length === 0 && <div className="amount-stats-empty">暂无兑换码库存</div>}
+        </div>
+      </section>
+        </>
+      )}
+
+      {activeSection === 'checkins' && (
+        <>
+      <form className="settings-panel checkin-settings" onSubmit={saveCheckInSettings}>
+        <div className="settings-panel-head checkin-settings-head">
           <div className="settings-title">
             <Settings2 size={18} />
             <span>签到设置</span>
           </div>
-          <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, prizeTiers, prizeTierDrafts)}>
-            <CheckCircle2 size={17} />
-            {settingsSaving ? '保存中...' : '保存'}
-          </button>
-          {settingsSaved && <span className="settings-saved">已保存</span>}
-        </div>
-
-        <div className="settings-grid">
-          <label>
-            每日签到上限
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={dailyMaxUsersDraft}
-              onChange={(event) => {
-                setDailyMaxUsersDraft(event.target.value);
-                setSettingsSaved(false);
-              }}
-            />
-          </label>
-
-          <div className="tier-editor">
-            <div className="tier-editor-head">
-              <span>兑换码金额概率</span>
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => {
-                  setPrizeTierDrafts((current) => [...current, { amount: '1.00', probability: '1.00' }]);
+          <div className="checkin-actions">
+            <label className="daily-limit-field">
+              每日上限
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={dailyMaxUsersDraft}
+                onChange={(event) => {
+                  setDailyMaxUsersDraft(event.target.value);
                   setSettingsSaved(false);
                 }}
-              >
-                <Plus size={17} />
-                添加
-              </button>
+              />
+            </label>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                setPrizeTierDrafts((current) => [...current, { amount: amountOptions[0] ?? '1.00', probability: '1.00' }]);
+                setSettingsSaved(false);
+              }}
+            >
+              <Plus size={17} />
+              添加档位
+            </button>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, prizeTiers, prizeTierDrafts, sub2api, sub2apiDraft)}>
+              <CheckCircle2 size={17} />
+              {settingsSaving ? '保存中...' : '保存'}
+            </button>
+            {settingsSaved && <span className="settings-saved">已保存</span>}
+          </div>
+        </div>
+
+        <div className="tier-editor">
+          <div className="tier-editor-head">
+            <span>兑换码金额概率</span>
+            <div className={`probability-total ${prizeTierTotal(prizeTierDrafts) === 100 ? 'is-valid' : ''}`}>
+              合计 {prizeTierTotal(prizeTierDrafts).toFixed(2)}%
+            </div>
+          </div>
+          <div className="tier-table">
+            <datalist id="prize-amount-options">
+              {amountOptions.map((amount) => (
+                <option key={amount} value={amount} />
+              ))}
+            </datalist>
+            <div className="tier-table-head">
+              <span>金额</span>
+              <span>概率 %</span>
+              <span>操作</span>
             </div>
             <div className="tier-list">
               {prizeTierDrafts.map((tier, index) => (
                 <div className="tier-row" key={index}>
-                  <label>
-                    金额
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={tier.amount}
-                      onChange={(event) => updatePrizeTierDraft(index, 'amount', event.target.value, setPrizeTierDrafts, setSettingsSaved)}
-                    />
-                  </label>
-                  <label>
-                    概率 %
-                    <input
-                      type="number"
-                      min="0.01"
-                      max="100"
-                      step="0.01"
-                      value={tier.probability}
-                      onChange={(event) => updatePrizeTierDraft(index, 'probability', event.target.value, setPrizeTierDrafts, setSettingsSaved)}
-                    />
-                  </label>
+                  <input
+                    aria-label={`第 ${index + 1} 档金额`}
+                    list="prize-amount-options"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={tier.amount}
+                    onChange={(event) => updatePrizeTierDraft(index, 'amount', event.target.value, setPrizeTierDrafts, setSettingsSaved)}
+                  />
+                  <input
+                    aria-label={`第 ${index + 1} 档概率`}
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    value={tier.probability}
+                    onChange={(event) => updatePrizeTierDraft(index, 'probability', event.target.value, setPrizeTierDrafts, setSettingsSaved)}
+                  />
                   <button
                     type="button"
                     className="icon-btn"
@@ -303,11 +410,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </div>
               ))}
             </div>
-            <div className={`probability-total ${prizeTierTotal(prizeTierDrafts) === 100 ? 'is-valid' : ''}`}>
-              合计 {prizeTierTotal(prizeTierDrafts).toFixed(2)}%
-            </div>
           </div>
         </div>
+
       </form>
 
       <section className="toolbar">
@@ -341,8 +446,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           批量导入
         </button>
       </section>
-
-      {error && <div className="error-banner">{error}</div>}
 
       <section className="table-panel">
         <table>
@@ -400,6 +503,94 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         <span>{page + 1} / {totalPages}</span>
         <button disabled={page + 1 >= totalPages} onClick={() => load(page + 1)}>下一页</button>
       </footer>
+        </>
+      )}
+
+      {activeSection === 'system' && (
+        <form className="settings-panel" onSubmit={saveCheckInSettings}>
+          <div className="settings-panel-head">
+            <div className="settings-title">
+              <Settings2 size={18} />
+              <span>系统设置</span>
+            </div>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, prizeTiers, prizeTierDrafts, sub2api, sub2apiDraft)}>
+              <CheckCircle2 size={17} />
+              {settingsSaving ? '保存中...' : '保存'}
+            </button>
+            {settingsSaved && <span className="settings-saved">已保存</span>}
+          </div>
+
+          <div className="sub2api-editor standalone">
+            <div className="tier-editor-head">
+              <span>Sub2API 远程配置</span>
+            </div>
+            <div className="sub2api-grid">
+              <label>
+                远程地址
+                <input
+                  value={sub2apiDraft.baseUrl}
+                  onChange={(event) => updateSub2APIDraft('baseUrl', event.target.value, setSub2apiDraft, setSettingsSaved)}
+                  placeholder="https://your-sub2api-host"
+                />
+              </label>
+              <label>
+                超时秒数
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={sub2apiDraft.timeoutSeconds}
+                  onChange={(event) => updateSub2APIDraft('timeoutSeconds', Number(event.target.value), setSub2apiDraft, setSettingsSaved)}
+                />
+              </label>
+              <label>
+                认证方式
+                <select
+                  value={sub2apiDraft.authMode}
+                  onChange={(event) => updateSub2APIDraft('authMode', event.target.value as Sub2APISettings['authMode'], setSub2apiDraft, setSettingsSaved)}
+                >
+                  <option value="password">管理员账号密码</option>
+                  <option value="admin_api_key">Admin API Key</option>
+                  <option value="jwt">JWT</option>
+                </select>
+              </label>
+              <label>
+                管理员邮箱
+                <input
+                  value={sub2apiDraft.adminEmail}
+                  onChange={(event) => updateSub2APIDraft('adminEmail', event.target.value, setSub2apiDraft, setSettingsSaved)}
+                  placeholder="admin@example.com"
+                />
+              </label>
+              <label>
+                管理员密码
+                <input
+                  type="password"
+                  value={sub2apiDraft.adminPassword ?? ''}
+                  onChange={(event) => updateSub2APIDraft('adminPassword', event.target.value, setSub2apiDraft, setSettingsSaved)}
+                  placeholder={sub2api.adminPasswordSet ? '已设置，留空则不修改' : ''}
+                />
+              </label>
+              <label>
+                Admin API Key
+                <input
+                  value={sub2apiDraft.adminApiKey ?? ''}
+                  onChange={(event) => updateSub2APIDraft('adminApiKey', event.target.value, setSub2apiDraft, setSettingsSaved)}
+                  placeholder={sub2api.adminApiKeySet ? '已设置，留空则不修改' : '可选，优先级最高'}
+                />
+              </label>
+              <label>
+                JWT
+                <input
+                  value={sub2apiDraft.jwt ?? ''}
+                  onChange={(event) => updateSub2APIDraft('jwt', event.target.value, setSub2apiDraft, setSettingsSaved)}
+                  placeholder={sub2api.jwtSet ? '已设置，留空则不修改' : '可选'}
+                />
+              </label>
+            </div>
+          </div>
+        </form>
+      )}
 
       {modalOpen && (
         <CodeModal
@@ -421,6 +612,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           }}
         />
       )}
+      </section>
     </main>
   );
 }
@@ -578,6 +770,60 @@ function toPrizeTierDrafts(prizeTiers: PrizeTierSetting[]) {
   }));
 }
 
+function toSub2APIDraft(settings: Sub2APISettings): Sub2APISettings {
+  return {
+    ...settings,
+    authMode: settings.authMode || 'password',
+    adminApiKey: '',
+    jwt: '',
+    adminPassword: '',
+    timeoutSeconds: settings.timeoutSeconds || 15
+  };
+}
+
+function updateSub2APIDraft<K extends keyof Sub2APISettings>(
+  key: K,
+  value: Sub2APISettings[K],
+  setSub2apiDraft: React.Dispatch<React.SetStateAction<Sub2APISettings>>,
+  setSettingsSaved: React.Dispatch<React.SetStateAction<boolean>>
+) {
+  setSub2apiDraft((current) => ({ ...current, [key]: value }));
+  setSettingsSaved(false);
+}
+
+function parseSub2APIDraft(draft: Sub2APISettings): Sub2APISettings | string {
+  const timeoutSeconds = Number(draft.timeoutSeconds);
+  if (!Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0) {
+    return 'Sub2API 超时秒数必须是大于 0 的整数';
+  }
+  if (!['admin_api_key', 'jwt', 'password'].includes(draft.authMode)) {
+    return '请选择有效的 Sub2API 认证方式';
+  }
+  return {
+    ...draft,
+    authMode: draft.authMode,
+    baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
+    adminApiKey: draft.adminApiKey?.trim() ?? '',
+    jwt: draft.jwt?.trim() ?? '',
+    adminEmail: draft.adminEmail.trim(),
+    timeoutSeconds
+  };
+}
+
+function toAmountOptions(amountStats: Stats['amountStats'], drafts: { amount: string; probability: string }[]) {
+  const amounts = new Set<string>();
+  amountStats.forEach((item) => {
+    amounts.add(Number(item.amount).toFixed(2));
+  });
+  drafts.forEach((tier) => {
+    const amount = Number(tier.amount);
+    if (Number.isFinite(amount) && amount > 0) {
+      amounts.add(amount.toFixed(2));
+    }
+  });
+  return Array.from(amounts).sort((left, right) => Number(left) - Number(right));
+}
+
 function updatePrizeTierDraft(
   index: number,
   key: 'amount' | 'probability',
@@ -625,12 +871,17 @@ function settingsChanged(
   dailyMaxUsers: number,
   dailyMaxUsersDraft: string,
   prizeTiers: PrizeTierSetting[],
-  prizeTierDrafts: { amount: string; probability: string }[]
+  prizeTierDrafts: { amount: string; probability: string }[],
+  sub2api: Sub2APISettings,
+  sub2apiDraft: Sub2APISettings
 ) {
   if (dailyMaxUsersDraft !== String(dailyMaxUsers)) {
     return true;
   }
-  return JSON.stringify(toPrizeTierDrafts(prizeTiers)) !== JSON.stringify(prizeTierDrafts);
+  if (JSON.stringify(toPrizeTierDrafts(prizeTiers)) !== JSON.stringify(prizeTierDrafts)) {
+    return true;
+  }
+  return JSON.stringify(toSub2APIDraft(sub2api)) !== JSON.stringify(sub2apiDraft);
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

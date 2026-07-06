@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,15 +11,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	mathrand "math/rand"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -38,7 +43,18 @@ const (
 
 	dailyMaxUsersKey = "check_in.daily_max_users"
 	prizeTiersKey    = "check_in.prize_tiers"
+
+	sub2APIBaseURLKey       = "sub2api.base_url"
+	sub2APIAdminAPIKeyKey   = "sub2api.admin_api_key"
+	sub2APIJWTKey           = "sub2api.jwt"
+	sub2APIAdminEmailKey    = "sub2api.admin_email"
+	sub2APIAdminPasswordKey = "sub2api.admin_password"
+	sub2APIAuthModeKey      = "sub2api.auth_mode"
+	sub2APITimeoutKey       = "sub2api.timeout_seconds"
+	sub2APIJWTExpiresAtKey  = "sub2api.jwt_expires_at"
 )
+
+const sub2APITokenRefreshBefore = 10 * time.Minute
 
 var (
 	validStatuses     = map[string]bool{statusAvailable: true, statusAssigned: true, statusUsed: true, statusVoided: true}
@@ -58,11 +74,22 @@ type Config struct {
 	AuthTokenTTLHours    int64
 	CorsAllowedOrigins   []string
 	CheckInDailyMaxUsers int
+	Sub2APIBaseURL       string
+	Sub2APIAdminAPIKey   string
+	Sub2APIJWT           string
+	Sub2APIAdminEmail    string
+	Sub2APIAdminPassword string
+	Sub2APITimeout       time.Duration
+	Sub2APIRefreshToken  bool
+	Sub2APIRefreshEvery  time.Duration
 }
 
 type App struct {
-	db  *gorm.DB
-	cfg Config
+	db                 *gorm.DB
+	cfg                Config
+	sub2APITokenMu     sync.Mutex
+	sub2APIToken       string
+	sub2APITokenExpiry time.Time
 }
 
 type Amount struct {
@@ -111,7 +138,18 @@ func (a Amount) Value() (driver.Value, error) {
 }
 
 func (a *Amount) Scan(value any) error {
-	d, err := decimal.NewFromString(fmt.Sprint(value))
+	var raw string
+	switch v := value.(type) {
+	case nil:
+		return errors.New("amount cannot be null")
+	case []byte:
+		raw = string(v)
+	case string:
+		raw = v
+	default:
+		raw = fmt.Sprint(v)
+	}
+	d, err := decimal.NewFromString(strings.TrimSpace(raw))
 	if err != nil {
 		return err
 	}
@@ -234,7 +272,7 @@ func (t *JSONTime) scanString(value string) error {
 
 type RedeemCode struct {
 	ID        uint64     `gorm:"primaryKey;column:id" json:"id"`
-	Code      string     `gorm:"column:code;size:32;not null;uniqueIndex:uk_redeem_codes_code" json:"code"`
+	Code      string     `gorm:"column:code;size:128;not null;uniqueIndex:uk_redeem_codes_code" json:"code"`
 	UserID    *string    `gorm:"column:user_id;size:64;uniqueIndex:uk_redeem_codes_user_date;index:idx_redeem_codes_user_date" json:"userId"`
 	SignDate  *LocalDate `gorm:"column:sign_date;type:date;uniqueIndex:uk_redeem_codes_user_date;index:idx_redeem_codes_user_date" json:"signDate"`
 	Amount    Amount     `gorm:"column:amount;type:decimal(10,2);not null;index:idx_redeem_codes_status_amount" json:"amount"`
@@ -367,11 +405,18 @@ type BatchImportCodesResponse struct {
 }
 
 type DashboardStatsResponse struct {
-	Total     int64 `json:"total"`
-	Available int64 `json:"available"`
-	Assigned  int64 `json:"assigned"`
-	Used      int64 `json:"used"`
-	Voided    int64 `json:"voided"`
+	Total       int64             `json:"total"`
+	Available   int64             `json:"available"`
+	Assigned    int64             `json:"assigned"`
+	Used        int64             `json:"used"`
+	Voided      int64             `json:"voided"`
+	AmountStats []AmountStatEntry `json:"amountStats"`
+}
+
+type AmountStatEntry struct {
+	Amount    Amount `json:"amount"`
+	Total     int64  `json:"total"`
+	Available int64  `json:"available"`
 }
 
 type CheckInRequest struct {
@@ -394,13 +439,28 @@ type PrizeTier struct {
 }
 
 type CheckInSettingsResponse struct {
-	DailyMaxUsers int         `json:"dailyMaxUsers"`
-	PrizeTiers    []PrizeTier `json:"prizeTiers"`
+	DailyMaxUsers int           `json:"dailyMaxUsers"`
+	PrizeTiers    []PrizeTier   `json:"prizeTiers"`
+	Sub2API       Sub2APIConfig `json:"sub2api"`
 }
 
 type UpdateCheckInSettingsRequest struct {
-	DailyMaxUsers int         `json:"dailyMaxUsers"`
-	PrizeTiers    []PrizeTier `json:"prizeTiers"`
+	DailyMaxUsers int           `json:"dailyMaxUsers"`
+	PrizeTiers    []PrizeTier   `json:"prizeTiers"`
+	Sub2API       Sub2APIConfig `json:"sub2api"`
+}
+
+type Sub2APIConfig struct {
+	BaseURL          string `json:"baseUrl"`
+	AuthMode         string `json:"authMode"`
+	AdminAPIKey      string `json:"adminApiKey,omitempty"`
+	AdminAPIKeySet   bool   `json:"adminApiKeySet"`
+	JWT              string `json:"jwt,omitempty"`
+	JWTSet           bool   `json:"jwtSet"`
+	AdminEmail       string `json:"adminEmail"`
+	AdminPassword    string `json:"adminPassword,omitempty"`
+	AdminPasswordSet bool   `json:"adminPasswordSet"`
+	TimeoutSeconds   int    `json:"timeoutSeconds"`
 }
 
 type PageResponse[T any] struct {
@@ -415,7 +475,24 @@ type APIError struct {
 	Message string `json:"message"`
 }
 
+type sub2APIResponse[T any] struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    T      `json:"data"`
+}
+
+type sub2APIRedeemCode struct {
+	Code string `json:"code"`
+}
+
+type sub2APILoginData struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int64  `json:"expires_in"`
+}
+
 func main() {
+	loadDotEnv()
+
 	cfg := loadConfig()
 	db, err := openDatabase(cfg)
 	if err != nil {
@@ -426,6 +503,7 @@ func main() {
 	if err := app.migrate(); err != nil {
 		log.Fatalf("migrate database: %v", err)
 	}
+	app.startSub2APITokenRefresher(context.Background())
 
 	router := app.router()
 	log.Printf("Go backend listening on :%s", cfg.Port)
@@ -446,6 +524,14 @@ func loadConfig() Config {
 		AuthTokenTTLHours:    envInt64("AUTH_TOKEN_TTL_HOURS", 12),
 		CorsAllowedOrigins:   splitCSV(env("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://8.137.103.102:5173")),
 		CheckInDailyMaxUsers: envInt("CHECK_IN_DAILY_MAX_USERS", 20),
+		Sub2APIBaseURL:       strings.TrimRight(env("SUB2API_BASE_URL", ""), "/"),
+		Sub2APIAdminAPIKey:   env("SUB2API_ADMIN_API_KEY", ""),
+		Sub2APIJWT:           env("SUB2API_JWT", ""),
+		Sub2APIAdminEmail:    env("SUB2API_ADMIN_EMAIL", env("SUB2API_ADMIN_USERNAME", "")),
+		Sub2APIAdminPassword: env("SUB2API_ADMIN_PASSWORD", ""),
+		Sub2APITimeout:       time.Duration(envInt("SUB2API_TIMEOUT_SECONDS", 15)) * time.Second,
+		Sub2APIRefreshToken:  envBool("SUB2API_TOKEN_REFRESH_ENABLED", true),
+		Sub2APIRefreshEvery:  time.Duration(envInt("SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS", 300)) * time.Second,
 	}
 }
 
@@ -512,7 +598,7 @@ func (app *App) migrate() error {
 	sqlStatements := []string{
 		`CREATE TABLE IF NOT EXISTS redeem_codes (
 			id BIGINT NOT NULL AUTO_INCREMENT,
-			code VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+			code VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
 			user_id VARCHAR(64) NULL,
 			sign_date DATE NULL,
 			amount DECIMAL(10, 2) NOT NULL,
@@ -553,7 +639,7 @@ func (app *App) migrate() error {
 		`UPDATE redeem_codes SET status = 'ASSIGNED' WHERE status = 'ISSUED'`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN user_id VARCHAR(64) NULL`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN sign_date DATE NULL`,
-		`ALTER TABLE redeem_codes MODIFY COLUMN code VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL`,
+		`ALTER TABLE redeem_codes MODIFY COLUMN code VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL`,
 		`ALTER TABLE redeem_codes MODIFY COLUMN status ENUM('AVAILABLE','ASSIGNED','USED','VOIDED') NOT NULL`,
 		`ALTER TABLE system_settings MODIFY COLUMN setting_value TEXT NOT NULL`,
 	}
@@ -759,13 +845,29 @@ func (app *App) stats(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	amountStats, err := app.amountStats()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, DashboardStatsResponse{
-		Total:     total,
-		Available: countStatus(statusAvailable),
-		Assigned:  countStatus(statusAssigned),
-		Used:      countStatus(statusUsed),
-		Voided:    countStatus(statusVoided),
+		Total:       total,
+		Available:   countStatus(statusAvailable),
+		Assigned:    countStatus(statusAssigned),
+		Used:        countStatus(statusUsed),
+		Voided:      countStatus(statusVoided),
+		AmountStats: amountStats,
 	})
+}
+
+func (app *App) amountStats() ([]AmountStatEntry, error) {
+	var result []AmountStatEntry
+	err := app.db.Model(&RedeemCode{}).
+		Select("amount, COUNT(*) AS total, SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS available", statusAvailable).
+		Group("amount").
+		Order("amount ASC").
+		Scan(&result).Error
+	return result, err
 }
 
 func (app *App) getCheckInSettings(c *gin.Context) {
@@ -804,7 +906,16 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, CheckInSettingsResponse{DailyMaxUsers: req.DailyMaxUsers, PrizeTiers: tiers})
+	if err := app.saveSub2APIConfig(req.Sub2API); err != nil {
+		serverError(c, err)
+		return
+	}
+	settings, err := app.loadCheckInSettings()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, settings)
 }
 
 func (app *App) checkIn(c *gin.Context) {
@@ -832,7 +943,7 @@ func (app *App) checkIn(c *gin.Context) {
 		return
 	}
 
-	response, err := app.createCheckIn(userID, today)
+	response, err := app.createCheckIn(c.Request.Context(), userID, today)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || isDuplicateEntry(err) {
 			var record CheckInRecord
@@ -854,7 +965,7 @@ func (app *App) checkIn(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (app *App) createCheckIn(userID string, today LocalDate) (CheckInResponse, error) {
+func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate) (CheckInResponse, error) {
 	var response CheckInResponse
 	err := app.db.Transaction(func(tx *gorm.DB) error {
 		if err := app.consumeDailyQuota(tx, today); err != nil {
@@ -864,23 +975,20 @@ func (app *App) createCheckIn(userID string, today LocalDate) (CheckInResponse, 
 		if err != nil {
 			return err
 		}
-		assigned, err := assignRandomAvailable(tx, userID, today, &drawnAmount)
+		remoteCode, err := app.generateSub2APIRedeemCode(ctx, userID, today, drawnAmount)
 		if err != nil {
 			return err
 		}
-		if assigned == 0 {
-			assigned, err = assignRandomAvailable(tx, userID, today, nil)
-			if err != nil {
-				return err
-			}
-		}
-		if assigned == 0 {
-			return businessConflict("兑换码库存不足，请先在后台导入兑换码")
-		}
 
-		var savedCode RedeemCode
-		if err := tx.Where("user_id = ? AND sign_date = ?", userID, today).First(&savedCode).Error; err != nil {
-			return errors.New("签到成功但未找到绑定兑换码")
+		savedCode := RedeemCode{
+			Code:     remoteCode,
+			UserID:   &userID,
+			SignDate: &today,
+			Amount:   drawnAmount,
+			Status:   statusAssigned,
+		}
+		if err := tx.Create(&savedCode).Error; err != nil {
+			return err
 		}
 		record := CheckInRecord{UserID: userID, SignDate: today, RedeemCodeID: savedCode.ID}
 		if err := tx.Create(&record).Error; err != nil {
@@ -890,6 +998,265 @@ func (app *App) createCheckIn(userID string, today LocalDate) (CheckInResponse, 
 		return nil
 	})
 	return response, err
+}
+
+func (app *App) generateSub2APIRedeemCode(ctx context.Context, userID string, today LocalDate, amount Amount) (string, error) {
+	cfg, err := app.effectiveSub2APIConfig()
+	if err != nil {
+		return "", err
+	}
+	if cfg.BaseURL == "" {
+		return "", businessConflict("Sub2API 未配置：请设置 SUB2API_BASE_URL")
+	}
+	authName, authValue, err := app.sub2APIAuthHeader(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+
+	payload := map[string]any{
+		"count": 1,
+		"type":  "balance",
+		"value": amount.InexactFloat64(),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	endpoint := cfg.BaseURL + "/api/v1/admin/redeem-codes/generate"
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
+	req.Header.Set("Idempotency-Key", sub2APIIdempotencyKey(userID, today, amount))
+	req.Header.Set(authName, authValue)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("生成 Sub2API 兑换码失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	var envelope sub2APIResponse[[]sub2APIRedeemCode]
+	if err := json.Unmarshal(respBody, &envelope); err != nil {
+		return "", fmt.Errorf("解析 Sub2API 响应失败: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || envelope.Code != 0 {
+		message := strings.TrimSpace(envelope.Message)
+		if message == "" {
+			message = resp.Status
+		}
+		return "", fmt.Errorf("生成 Sub2API 兑换码失败: %s", message)
+	}
+	if len(envelope.Data) == 0 || strings.TrimSpace(envelope.Data[0].Code) == "" {
+		return "", errors.New("生成 Sub2API 兑换码失败: 响应中没有兑换码")
+	}
+	return strings.TrimSpace(envelope.Data[0].Code), nil
+}
+
+func (app *App) sub2APIAuthHeader(ctx context.Context, cfg Sub2APIConfig) (string, string, error) {
+	switch normalizeSub2APIAuthMode(cfg.AuthMode) {
+	case "admin_api_key":
+		if cfg.AdminAPIKey == "" {
+			return "", "", businessConflict("Sub2API 未配置：当前认证方式需要 Admin API Key")
+		}
+		return "x-api-key", cfg.AdminAPIKey, nil
+	case "jwt":
+		if cfg.JWT == "" {
+			return "", "", businessConflict("Sub2API 未配置：当前认证方式需要 JWT")
+		}
+		return "Authorization", "Bearer " + cfg.JWT, nil
+	default:
+		token, err := app.sub2APILogin(ctx, cfg)
+		if err != nil {
+			return "", "", err
+		}
+		return "Authorization", "Bearer " + token, nil
+	}
+}
+
+func (app *App) startSub2APITokenRefresher(ctx context.Context) {
+	if !app.cfg.Sub2APIRefreshToken {
+		return
+	}
+	interval := app.cfg.Sub2APIRefreshEvery
+	if interval < time.Minute {
+		interval = 5 * time.Minute
+	}
+	go func() {
+		app.refreshSub2APITokenOnce(ctx)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				app.refreshSub2APITokenOnce(ctx)
+			}
+		}
+	}()
+}
+
+func (app *App) refreshSub2APITokenOnce(ctx context.Context) {
+	cfg, err := app.effectiveSub2APIConfig()
+	if err != nil {
+		log.Printf("Sub2API token refresh skipped: %v", err)
+		return
+	}
+	if normalizeSub2APIAuthMode(cfg.AuthMode) != "password" {
+		return
+	}
+	if cfg.BaseURL == "" || cfg.AdminEmail == "" || cfg.AdminPassword == "" {
+		return
+	}
+	if _, err := app.sub2APILogin(ctx, cfg); err != nil {
+		log.Printf("Sub2API token refresh failed: %v", err)
+	}
+}
+
+func (app *App) sub2APILogin(ctx context.Context, cfg Sub2APIConfig) (string, error) {
+	if cfg.BaseURL == "" {
+		return "", businessConflict("Sub2API 未配置：请设置 SUB2API_BASE_URL")
+	}
+	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
+		return "", businessConflict("Sub2API 未配置：请设置 SUB2API_ADMIN_API_KEY、SUB2API_JWT，或 SUB2API_ADMIN_EMAIL/SUB2API_ADMIN_PASSWORD")
+	}
+
+	app.sub2APITokenMu.Lock()
+	defer app.sub2APITokenMu.Unlock()
+	if app.sub2APIToken != "" && time.Now().Before(app.sub2APITokenExpiry.Add(-sub2APITokenRefreshBefore)) {
+		return app.sub2APIToken, nil
+	}
+	if token, expiresAt, ok := app.loadStoredSub2APIToken(); ok && time.Now().Before(expiresAt.Add(-sub2APITokenRefreshBefore)) {
+		app.sub2APIToken = token
+		app.sub2APITokenExpiry = expiresAt
+		return token, nil
+	}
+
+	payload := map[string]string{
+		"email":    cfg.AdminEmail,
+		"password": cfg.AdminPassword,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, cfg.BaseURL+"/api/v1/auth/login", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("登录 Sub2API 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	var envelope sub2APIResponse[sub2APILoginData]
+	if err := json.Unmarshal(respBody, &envelope); err != nil {
+		return "", fmt.Errorf("解析 Sub2API 登录响应失败: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || envelope.Code != 0 {
+		message := strings.TrimSpace(envelope.Message)
+		if message == "" {
+			message = resp.Status
+		}
+		return "", fmt.Errorf("登录 Sub2API 失败: %s", message)
+	}
+	if strings.TrimSpace(envelope.Data.AccessToken) == "" {
+		return "", errors.New("登录 Sub2API 失败: 响应中没有 access_token")
+	}
+
+	expiresIn := envelope.Data.ExpiresIn
+	if expiresIn <= 0 {
+		expiresIn = 3600
+	}
+	app.sub2APIToken = strings.TrimSpace(envelope.Data.AccessToken)
+	app.sub2APITokenExpiry = time.Now().Add(time.Duration(expiresIn) * time.Second)
+	if err := app.saveSub2APIToken(app.sub2APIToken, app.sub2APITokenExpiry); err != nil {
+		log.Printf("save Sub2API token failed: %v", err)
+	}
+	return app.sub2APIToken, nil
+}
+
+func (app *App) loadStoredSub2APIToken() (string, time.Time, bool) {
+	token, found, err := app.getSetting(sub2APIJWTKey)
+	if err != nil {
+		log.Printf("load Sub2API token failed: %v", err)
+		return "", time.Time{}, false
+	}
+	if !found || strings.TrimSpace(token) == "" {
+		return "", time.Time{}, false
+	}
+	rawExpiresAt, found, err := app.getSetting(sub2APIJWTExpiresAtKey)
+	if err != nil {
+		log.Printf("load Sub2API token expiry failed: %v", err)
+		return "", time.Time{}, false
+	}
+	if !found {
+		return "", time.Time{}, false
+	}
+	expiresAt, err := parseSub2APITokenExpiry(rawExpiresAt)
+	if err != nil {
+		log.Printf("parse Sub2API token expiry failed: %v", err)
+		return "", time.Time{}, false
+	}
+	return strings.TrimSpace(token), expiresAt, true
+}
+
+func (app *App) saveSub2APIToken(token string, expiresAt time.Time) error {
+	if strings.TrimSpace(token) == "" || expiresAt.IsZero() {
+		return nil
+	}
+	if err := app.saveSetting(sub2APIJWTKey, strings.TrimSpace(token)); err != nil {
+		return err
+	}
+	return app.saveSetting(sub2APIJWTExpiresAtKey, strconv.FormatInt(expiresAt.Unix(), 10))
+}
+
+func parseSub2APITokenExpiry(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, errors.New("empty token expiry")
+	}
+	if unixSeconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return time.Unix(unixSeconds, 0), nil
+	}
+	return time.Parse(time.RFC3339, value)
+}
+
+func (app *App) clearSub2APIToken() {
+	app.sub2APITokenMu.Lock()
+	defer app.sub2APITokenMu.Unlock()
+	app.sub2APIToken = ""
+	app.sub2APITokenExpiry = time.Time{}
+}
+
+func sub2APIIdempotencyKey(userID string, today LocalDate, amount Amount) string {
+	sum := sha256.Sum256([]byte(userID))
+	return fmt.Sprintf("checkin-%s-%x-%s", today.Format("2006-01-02"), sum[:8], amount.StringFixed(2))
 }
 
 func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate) error {
@@ -943,7 +1310,133 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
-	return CheckInSettingsResponse{DailyMaxUsers: dailyMaxUsers, PrizeTiers: tiers}, nil
+	sub2api, err := app.effectiveSub2APIConfig()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	sub2api.AdminAPIKeySet = sub2api.AdminAPIKey != ""
+	sub2api.JWTSet = sub2api.JWT != ""
+	sub2api.AdminPasswordSet = sub2api.AdminPassword != ""
+	sub2api.AdminAPIKey = ""
+	sub2api.JWT = ""
+	sub2api.AdminPassword = ""
+	return CheckInSettingsResponse{DailyMaxUsers: dailyMaxUsers, PrizeTiers: tiers, Sub2API: sub2api}, nil
+}
+
+func (app *App) effectiveSub2APIConfig() (Sub2APIConfig, error) {
+	timeoutSeconds := int(app.cfg.Sub2APITimeout / time.Second)
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 15
+	}
+	cfg := Sub2APIConfig{
+		BaseURL:          app.cfg.Sub2APIBaseURL,
+		AuthMode:         defaultSub2APIAuthMode(app.cfg),
+		AdminAPIKey:      app.cfg.Sub2APIAdminAPIKey,
+		JWT:              app.cfg.Sub2APIJWT,
+		AdminEmail:       app.cfg.Sub2APIAdminEmail,
+		AdminPassword:    app.cfg.Sub2APIAdminPassword,
+		TimeoutSeconds:   timeoutSeconds,
+		AdminAPIKeySet:   app.cfg.Sub2APIAdminAPIKey != "",
+		JWTSet:           app.cfg.Sub2APIJWT != "",
+		AdminPasswordSet: app.cfg.Sub2APIAdminPassword != "",
+	}
+	var err error
+	if cfg.BaseURL, err = app.settingOrDefault(sub2APIBaseURLKey, cfg.BaseURL); err != nil {
+		return Sub2APIConfig{}, err
+	}
+	if cfg.AuthMode, err = app.settingOrDefault(sub2APIAuthModeKey, cfg.AuthMode); err != nil {
+		return Sub2APIConfig{}, err
+	}
+	if cfg.AdminAPIKey, err = app.settingOrDefault(sub2APIAdminAPIKeyKey, cfg.AdminAPIKey); err != nil {
+		return Sub2APIConfig{}, err
+	}
+	if cfg.JWT, err = app.settingOrDefault(sub2APIJWTKey, cfg.JWT); err != nil {
+		return Sub2APIConfig{}, err
+	}
+	if cfg.AdminEmail, err = app.settingOrDefault(sub2APIAdminEmailKey, cfg.AdminEmail); err != nil {
+		return Sub2APIConfig{}, err
+	}
+	if cfg.AdminPassword, err = app.settingOrDefault(sub2APIAdminPasswordKey, cfg.AdminPassword); err != nil {
+		return Sub2APIConfig{}, err
+	}
+	timeoutValue, err := app.settingOrDefault(sub2APITimeoutKey, strconv.Itoa(cfg.TimeoutSeconds))
+	if err != nil {
+		return Sub2APIConfig{}, err
+	}
+	if parsed, parseErr := strconv.Atoi(strings.TrimSpace(timeoutValue)); parseErr == nil && parsed > 0 {
+		cfg.TimeoutSeconds = parsed
+	}
+	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	cfg.AuthMode = normalizeSub2APIAuthMode(cfg.AuthMode)
+	cfg.AdminAPIKey = strings.TrimSpace(cfg.AdminAPIKey)
+	cfg.JWT = strings.TrimSpace(cfg.JWT)
+	cfg.AdminEmail = strings.TrimSpace(cfg.AdminEmail)
+	return cfg, nil
+}
+
+func (app *App) saveSub2APIConfig(cfg Sub2APIConfig) error {
+	timeoutSeconds := cfg.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 15
+	}
+	values := map[string]string{
+		sub2APIBaseURLKey:    strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/"),
+		sub2APIAuthModeKey:   normalizeSub2APIAuthMode(cfg.AuthMode),
+		sub2APIAdminEmailKey: strings.TrimSpace(cfg.AdminEmail),
+		sub2APITimeoutKey:    strconv.Itoa(timeoutSeconds),
+	}
+	for key, value := range values {
+		if err := app.saveSetting(key, value); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(cfg.AdminAPIKey) != "" {
+		if err := app.saveSetting(sub2APIAdminAPIKeyKey, strings.TrimSpace(cfg.AdminAPIKey)); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(cfg.JWT) != "" {
+		if err := app.saveSetting(sub2APIJWTKey, strings.TrimSpace(cfg.JWT)); err != nil {
+			return err
+		}
+	}
+	if cfg.AdminPassword != "" {
+		if err := app.saveSetting(sub2APIAdminPasswordKey, cfg.AdminPassword); err != nil {
+			return err
+		}
+	}
+	app.clearSub2APIToken()
+	return nil
+}
+
+func defaultSub2APIAuthMode(cfg Config) string {
+	if cfg.Sub2APIAdminAPIKey != "" {
+		return "admin_api_key"
+	}
+	if cfg.Sub2APIJWT != "" {
+		return "jwt"
+	}
+	return "password"
+}
+
+func normalizeSub2APIAuthMode(value string) string {
+	switch strings.TrimSpace(value) {
+	case "admin_api_key", "jwt", "password":
+		return strings.TrimSpace(value)
+	default:
+		return "password"
+	}
+}
+
+func (app *App) settingOrDefault(key, fallback string) (string, error) {
+	value, found, err := app.getSetting(key)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return fallback, nil
+	}
+	return value, nil
 }
 
 func (app *App) getDailyMaxUsers() (int, error) {
@@ -1330,6 +1823,106 @@ func isDuplicateEntry(err error) bool {
 	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }
 
+func loadDotEnv() {
+	loaded := map[string]bool{}
+	for _, path := range dotenvPaths() {
+		cleanPath := filepath.Clean(path)
+		if loaded[cleanPath] {
+			continue
+		}
+		loaded[cleanPath] = true
+		if err := loadDotEnvFile(cleanPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("load %s: %v", cleanPath, err)
+		}
+	}
+}
+
+func dotenvPaths() []string {
+	paths := []string{".env", filepath.Join("backend-go", ".env")}
+	if exePath, err := os.Executable(); err == nil {
+		paths = append(paths, filepath.Join(filepath.Dir(exePath), ".env"))
+	}
+	return paths
+}
+
+func loadDotEnvFile(path string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	for index, line := range strings.Split(string(content), "\n") {
+		key, value, ok, err := parseDotEnvLine(line)
+		if err != nil {
+			return fmt.Errorf("line %d: %w", index+1, err)
+		}
+		if !ok {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); !exists {
+			if err := os.Setenv(key, value); err != nil {
+				return fmt.Errorf("line %d: %w", index+1, err)
+			}
+		}
+	}
+	return nil
+}
+
+func parseDotEnvLine(line string) (key string, value string, ok bool, err error) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return "", "", false, nil
+	}
+	line = strings.TrimPrefix(line, "export ")
+	parts := strings.SplitN(line, "=", 2)
+	if len(parts) != 2 {
+		return "", "", false, fmt.Errorf("expected KEY=VALUE")
+	}
+	key = strings.TrimSpace(parts[0])
+	if !isDotEnvKey(key) {
+		return "", "", false, fmt.Errorf("invalid key %q", key)
+	}
+	value = strings.TrimSpace(parts[1])
+	if len(value) >= 2 {
+		quote := value[0]
+		if quote == '"' || quote == '\'' {
+			if value[len(value)-1] != quote {
+				return "", "", false, fmt.Errorf("unterminated quoted value for %s", key)
+			}
+			value = value[1 : len(value)-1]
+			if quote == '"' {
+				if unquoted, unquoteErr := strconv.Unquote(`"` + value + `"`); unquoteErr == nil {
+					value = unquoted
+				}
+			}
+			return key, value, true, nil
+		}
+	}
+	value = strings.TrimSpace(stripDotEnvComment(value))
+	return key, value, true, nil
+}
+
+func isDotEnvKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for index, char := range key {
+		valid := char == '_' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || index > 0 && char >= '0' && char <= '9'
+		if !valid {
+			return false
+		}
+	}
+	return true
+}
+
+func stripDotEnvComment(value string) string {
+	for index, char := range value {
+		if char == '#' && (index == 0 || value[index-1] == ' ' || value[index-1] == '\t') {
+			return value[:index]
+		}
+	}
+	return value
+}
+
 func env(key, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -1352,6 +1945,18 @@ func envInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	return value
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(env(key, "")))
+	switch value {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func splitCSV(value string) []string {

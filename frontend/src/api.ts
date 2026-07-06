@@ -28,6 +28,13 @@ export interface Stats {
   assigned: number;
   used: number;
   voided: number;
+  amountStats: AmountStats[];
+}
+
+export interface AmountStats {
+  amount: number;
+  total: number;
+  available: number;
 }
 
 export interface CodePayload {
@@ -53,11 +60,25 @@ export interface BatchImportResult {
 export interface CheckInSettings {
   dailyMaxUsers: number;
   prizeTiers: PrizeTierSetting[];
+  sub2api: Sub2APISettings;
 }
 
 export interface PrizeTierSetting {
   amount: number;
   probability: number;
+}
+
+export interface Sub2APISettings {
+  baseUrl: string;
+  authMode: 'admin_api_key' | 'jwt' | 'password';
+  adminApiKey?: string;
+  adminApiKeySet: boolean;
+  jwt?: string;
+  jwtSet: boolean;
+  adminEmail: string;
+  adminPassword?: string;
+  adminPasswordSet: boolean;
+  timeoutSeconds: number;
 }
 
 export function getToken() {
@@ -89,10 +110,10 @@ export async function fetchCheckInSettings() {
   return request<CheckInSettings>('/api/admin/settings/check-in');
 }
 
-export async function updateCheckInSettings(dailyMaxUsers: number, prizeTiers: PrizeTierSetting[]) {
+export async function updateCheckInSettings(dailyMaxUsers: number, prizeTiers: PrizeTierSetting[], sub2api: Sub2APISettings) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, prizeTiers })
+    body: JSON.stringify({ dailyMaxUsers, prizeTiers, sub2api })
   });
 }
 
