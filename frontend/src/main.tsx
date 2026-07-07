@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   CalendarCheck2,
@@ -10,6 +10,7 @@ import {
   Code2,
   ExternalLink,
   Globe2,
+  GripVertical,
   Home,
   KeyRound,
   LogOut,
@@ -19,6 +20,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  ShoppingCart,
   Star,
   Trash2,
   UserRound,
@@ -83,7 +85,8 @@ const favoriteIconPresets = [
   { value: 'preset:code', label: '代码', icon: Code2 },
   { value: 'preset:mail', label: '邮箱', icon: Mail },
   { value: 'preset:key', label: '密钥', icon: KeyRound },
-  { value: 'preset:user', label: '账号', icon: UserRound }
+  { value: 'preset:user', label: '账号', icon: UserRound },
+  { value: 'preset:shop', label: '商城', icon: ShoppingCart }
 ];
 
 const favoriteEmojiPresets = [
@@ -170,6 +173,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [favoriteSites, setFavoriteSites] = useState<FavoriteSite[]>([]);
+  const [draggedFavoriteId, setDraggedFavoriteId] = useState<number | null>(null);
+  const favoriteSitesRef = useRef<FavoriteSite[]>([]);
+  const favoriteCardRefs = useRef(new Map<number, HTMLElement>());
+  const favoriteOrderChangedRef = useRef(false);
   const [favoriteGroups, setFavoriteGroups] = useState<string[]>([]);
   const [favoriteKeyword, setFavoriteKeyword] = useState('');
   const [favoriteGroup, setFavoriteGroup] = useState('');
@@ -195,16 +202,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         fetchCodes({ keyword, status, page: nextPage, size: 10 }),
         fetchCheckInSettings()
       ]);
-      setStats(statsData);
-      setCodes(pageData.content);
+      setStats(normalizeStats(statsData));
+      setCodes(Array.isArray(pageData.content) ? pageData.content : []);
       setPage(pageData.number);
       setTotalPages(Math.max(pageData.totalPages, 1));
       setDailyMaxUsers(settingsData.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settingsData.dailyMaxUsers));
-      setPrizeTiers(settingsData.prizeTiers);
+      setPrizeTiers(Array.isArray(settingsData.prizeTiers) ? settingsData.prizeTiers : []);
       setPrizeTierDrafts(toPrizeTierDrafts(settingsData.prizeTiers));
-      setSub2api(settingsData.sub2api);
-      setSub2apiDraft(toSub2APIDraft(settingsData.sub2api));
+      setSub2api(settingsData.sub2api ?? emptySub2APISettings);
+      setSub2apiDraft(toSub2APIDraft(settingsData.sub2api ?? emptySub2APISettings));
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
     } finally {
@@ -221,6 +228,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         fetchFavoriteSiteGroups()
       ]);
       setFavoriteSites(pageData.content);
+      favoriteSitesRef.current = pageData.content;
       setFavoriteGroups(groupsData);
       setFavoritePage(pageData.number);
       setFavoriteTotalPages(Math.max(pageData.totalPages, 1));
@@ -269,14 +277,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     load(page);
   }
 
-  async function removeFavoriteSite(id: number) {
-    if (!window.confirm('确认删除这个收藏网站？')) {
-      return;
-    }
-    await deleteFavoriteSite(id);
-    loadFavoriteSites(favoritePage);
-  }
-
   async function saveCheckInSettings(event: FormEvent) {
     event.preventDefault();
     const nextDailyMaxUsers = Number(dailyMaxUsersDraft);
@@ -313,6 +313,97 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       setError(err instanceof Error ? err.message : '保存设置失败');
     } finally {
       setSettingsSaving(false);
+    }
+  }
+
+  function setFavoriteCardRef(id: number, element: HTMLElement | null) {
+    if (element) {
+      favoriteCardRefs.current.set(id, element);
+    } else {
+      favoriteCardRefs.current.delete(id);
+    }
+  }
+
+  function animateFavoriteReorder(nextSites: FavoriteSite[]) {
+    const previousRects = new Map<number, DOMRect>();
+    favoriteCardRefs.current.forEach((element, id) => {
+      previousRects.set(id, element.getBoundingClientRect());
+    });
+
+    favoriteSitesRef.current = nextSites;
+    setFavoriteSites(nextSites);
+
+    window.requestAnimationFrame(() => {
+      nextSites.forEach((site) => {
+        const element = favoriteCardRefs.current.get(site.id);
+        const previousRect = previousRects.get(site.id);
+        if (!element || !previousRect) return;
+        const nextRect = element.getBoundingClientRect();
+        const deltaX = previousRect.left - nextRect.left;
+        const deltaY = previousRect.top - nextRect.top;
+        if (deltaX === 0 && deltaY === 0) return;
+
+        element.style.transition = 'none';
+        element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+        element.style.zIndex = site.id === draggedFavoriteId ? '2' : '1';
+        window.requestAnimationFrame(() => {
+          element.style.transition = 'transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1)';
+          element.style.transform = '';
+          window.setTimeout(() => {
+            element.style.transition = '';
+            element.style.zIndex = '';
+          }, 210);
+        });
+      });
+    });
+  }
+
+  function moveFavoriteSiteInView(targetId: number) {
+    if (draggedFavoriteId === null || draggedFavoriteId === targetId) {
+      return;
+    }
+    const currentSites = favoriteSitesRef.current;
+    const draggedIndex = currentSites.findIndex((site) => site.id === draggedFavoriteId);
+    const targetIndex = currentSites.findIndex((site) => site.id === targetId);
+    if (draggedIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    const nextSites = [...currentSites];
+    const [draggedSite] = nextSites.splice(draggedIndex, 1);
+    nextSites.splice(targetIndex, 0, draggedSite);
+    favoriteOrderChangedRef.current = true;
+    animateFavoriteReorder(nextSites);
+  }
+
+  async function finishFavoriteDrag() {
+    const shouldSave = favoriteOrderChangedRef.current;
+    favoriteOrderChangedRef.current = false;
+    setDraggedFavoriteId(null);
+    if (!shouldSave) {
+      return;
+    }
+
+    const currentSites = favoriteSitesRef.current;
+    const baseSort = favoritePage * 10;
+    const sortedSites = currentSites.map((site, index) => ({ ...site, sort: baseSort + index }));
+
+    favoriteSitesRef.current = sortedSites;
+    setFavoriteSites(sortedSites);
+    setError('');
+    try {
+      await Promise.all(sortedSites.map((site) => updateFavoriteSite(site.id, {
+        icon: site.icon,
+        url: site.url,
+        name: site.name,
+        description: site.description,
+        group: site.group,
+        sort: site.sort
+      })));
+      loadFavoriteSites(favoritePage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存排序失败');
+      loadFavoriteSites(favoritePage);
     }
   }
 
@@ -624,61 +715,67 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </button>
       </section>
 
-      <section className="table-panel favorite-table-panel">
-        <table>
-          <thead>
-            <tr>
-              <th>图标</th>
-              <th>名称</th>
-              <th>URL</th>
-              <th>简介</th>
-              <th>分组</th>
-              <th>排序</th>
-              <th>创建时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {favoriteSites.map((site) => (
-              <tr key={site.id}>
-                <td>
+      <section className="favorite-card-panel">
+        <div className="favorite-card-grid">
+          {favoriteSites.map((site) => (
+            <article
+              className={`favorite-card ${draggedFavoriteId === site.id ? 'is-dragging' : ''}`}
+              key={site.id}
+              ref={(element) => setFavoriteCardRef(site.id, element)}
+              onDragOver={(event) => {
+                if (draggedFavoriteId === null) return;
+                event.preventDefault();
+                moveFavoriteSiteInView(site.id);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                finishFavoriteDrag();
+              }}
+              onDragEnd={() => finishFavoriteDrag()}
+            >
+              <a className="favorite-card-link" href={site.url} target="_blank" rel="noreferrer" aria-label={`打开 ${site.name}`}>
+                <div className="favorite-card-main">
                   <SiteIcon site={site} />
-                </td>
-                <td className="site-name-cell">{site.name}</td>
-                <td>
-                  <a className="site-url" href={site.url} target="_blank" rel="noreferrer">
+                  <div className="favorite-card-content">
+                    <div className="favorite-card-title">
+                    <span>{site.name}</span>
                     <ExternalLink size={15} />
-                    {site.url}
-                  </a>
-                </td>
-                <td className="site-description-cell">{site.description || '-'}</td>
-                <td>{site.group || '-'}</td>
-                <td>{site.sort}</td>
-                <td>{formatDateTime(site.createdAt)}</td>
-                <td>
-                  <div className="row-actions">
-                    <button title="编辑" onClick={() => { setEditingFavorite(site); setFavoriteModalOpen(true); }}>
-                      <Pencil size={16} />
-                    </button>
-                    <button title="删除" onClick={() => removeFavoriteSite(site.id)}>
-                      <Trash2 size={16} />
-                    </button>
+                    </div>
+                    <p>{site.description || '暂无简介'}</p>
                   </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && favoriteSites.length === 0 && (
-              <tr>
-                <td colSpan={8} className="empty-cell">暂无收藏网站</td>
-              </tr>
-            )}
-            {loading && (
-              <tr>
-                <td colSpan={8} className="empty-cell">加载中...</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+              </a>
+              <div className="favorite-card-footer">
+                <span className="favorite-group-pill">{site.group || '未分组'}</span>
+                <div className="favorite-card-actions">
+                  <button className="icon-btn" title="编辑" onClick={() => { setEditingFavorite(site); setFavoriteModalOpen(true); }}>
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    className="icon-btn drag-handle"
+                    title="拖动排序"
+                    draggable
+                    onDragStart={(event) => {
+                      setDraggedFavoriteId(site.id);
+                      favoriteOrderChangedRef.current = false;
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', String(site.id));
+                    }}
+                    type="button"
+                  >
+                    <GripVertical size={16} />
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+        {!loading && favoriteSites.length === 0 && (
+          <div className="empty-cell">暂无收藏网站</div>
+        )}
+        {loading && (
+          <div className="empty-cell">加载中...</div>
+        )}
       </section>
 
       <footer className="pager">
@@ -795,6 +892,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           onSaved={() => {
             setFavoriteModalOpen(false);
             loadFavoriteSites(editingFavorite ? favoritePage : 0);
+          }}
+          onDeleted={() => {
+            setFavoriteModalOpen(false);
+            setEditingFavorite(null);
+            loadFavoriteSites(favoritePage);
           }}
         />
       )}
@@ -968,7 +1070,7 @@ function iconLabel(value: string) {
   return '无图标';
 }
 
-function FavoriteSiteModal({ site, groups, onClose, onSaved }: { site: FavoriteSite | null; groups: string[]; onClose: () => void; onSaved: () => void }) {
+function FavoriteSiteModal({ site, groups, onClose, onSaved, onDeleted }: { site: FavoriteSite | null; groups: string[]; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
   const [form, setForm] = useState<FavoriteSitePayload>({
     icon: site?.icon ?? '',
     url: site?.url ?? '',
@@ -982,6 +1084,7 @@ function FavoriteSiteModal({ site, groups, onClose, onSaved }: { site: FavoriteS
   const [newGroup, setNewGroup] = useState(initialGroupMode === '__new__' ? site?.group ?? '' : '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function patch<K extends keyof FavoriteSitePayload>(key: K, value: FavoriteSitePayload[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -1008,6 +1111,22 @@ function FavoriteSiteModal({ site, groups, onClose, onSaved }: { site: FavoriteS
       setError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function removeSite() {
+    if (!site || !window.confirm('确认删除这个收藏网站？')) {
+      return;
+    }
+    setDeleting(true);
+    setError('');
+    try {
+      await deleteFavoriteSite(site.id);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -1093,10 +1212,18 @@ function FavoriteSiteModal({ site, groups, onClose, onSaved }: { site: FavoriteS
         </div>
 
         {error && <div className="error-line">{error}</div>}
-        <button className="primary-btn wide" type="submit" disabled={saving}>
-          <CheckCircle2 size={18} />
-          {saving ? '保存中...' : '保存'}
-        </button>
+        <div className="modal-actions">
+          {site && (
+            <button className="danger-btn" type="button" disabled={deleting || saving} onClick={removeSite}>
+              <Trash2 size={17} />
+              {deleting ? '删除中...' : '删除'}
+            </button>
+          )}
+          <button className="primary-btn" type="submit" disabled={saving || deleting}>
+            <CheckCircle2 size={18} />
+            {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
       </form>
     </div>
   );
@@ -1260,7 +1387,15 @@ function sectionTitle(section: DashboardSection) {
   }
 }
 
-function toPrizeTierDrafts(prizeTiers: PrizeTierSetting[]) {
+function normalizeStats(stats: Stats): Stats {
+  return {
+    ...emptyStats,
+    ...stats,
+    amountStats: Array.isArray(stats?.amountStats) ? stats.amountStats : []
+  };
+}
+
+function toPrizeTierDrafts(prizeTiers: PrizeTierSetting[] = []) {
   const tiers = prizeTiers.length ? prizeTiers : [{ amount: 1, probability: 100 }];
   return tiers.map((tier) => ({
     amount: Number(tier.amount).toFixed(2),

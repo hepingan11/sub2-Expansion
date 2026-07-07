@@ -22,7 +22,7 @@ go mod tidy
 go run .
 ```
 
-默认监听 `8080`。推荐复制 `.env.example` 为 `.env`，再按本机 MySQL 信息修改：
+默认监听 `8080`。推荐复制 `.env.example` 为 `.env`，再按本机 PostgreSQL 信息修改：
 
 ```powershell
 cd backend-go
@@ -30,13 +30,15 @@ Copy-Item .env.example .env
 go run .
 ```
 
+PostgreSQL 需要先创建数据库，例如 `createdb redeem_code_system`，或在管理工具里创建同名库。
+
 `.env` 中可以配置：
 
 ```dotenv
 SERVER_PORT=8080
-DB_URL=jdbc:mysql://localhost:3306/redeem_code_system?serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
-DB_USERNAME=root
-DB_PASSWORD=root
+DB_URL=postgres://postgres:postgres@localhost:5432/redeem_code_system?sslmode=disable&TimeZone=Asia/Shanghai
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 AUTH_SECRET=please-change-this-secret
@@ -56,9 +58,9 @@ SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS=300
 
 ```powershell
 $env:SERVER_PORT="8080"
-$env:DB_URL="jdbc:mysql://localhost:3306/redeem_code_system?serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true"
-$env:DB_USERNAME="root"
-$env:DB_PASSWORD="root"
+$env:DB_URL="postgres://postgres:postgres@localhost:5432/redeem_code_system?sslmode=disable&TimeZone=Asia/Shanghai"
+$env:DB_USERNAME="postgres"
+$env:DB_PASSWORD="postgres"
 $env:ADMIN_USERNAME="admin"
 $env:ADMIN_PASSWORD="admin123"
 $env:AUTH_SECRET="please-change-this-secret"
@@ -68,18 +70,18 @@ $env:CHECK_IN_DAILY_MAX_USERS="20"
 go run .
 ```
 
-也可以直接提供 Go MySQL DSN：
+也可以直接提供 PostgreSQL DSN：
 
 ```powershell
-$env:DB_DSN="root:root@tcp(localhost:3306)/redeem_code_system?charset=utf8mb4&parseTime=True&loc=Local&collation=utf8mb4_unicode_ci"
+$env:DB_DSN="host=localhost user=postgres password=postgres dbname=redeem_code_system port=5432 sslmode=disable TimeZone=Asia/Shanghai"
 go run .
 ```
 
 ## 说明
 
-- MySQL 表结构，并在启动时执行等价迁移。
+- 使用 PostgreSQL 存储数据，并在启动时执行表结构迁移。
 - 管理员 token 格式兼容原 Java HMAC token，不是 JWT。
-- MySQL 连接池默认限制为 `MaxOpenConns=10`、`MaxIdleConns=5`，更适合小内存服务器。
+- PostgreSQL 连接池默认限制为 `MaxOpenConns=10`、`MaxIdleConns=5`，更适合小内存服务器。
 - 兑换码金额和概率用 decimal 处理，JSON 仍返回数字格式。
 - 签到成功时会按抽中的金额调用 Sub2API `POST /api/v1/admin/redeem-codes/generate` 生成 `balance` 兑换码，再把生成的码绑定到本地签到记录。`SUB2API_*` 环境变量作为默认值，也可以在后台“签到设置”里覆盖远程地址、认证方式、管理员账号密码/API Key 和超时时间。
 - 使用管理员账号密码认证 Sub2API 时，后端会定时预热 access token，并保存到 `system_settings`。后续请求会优先复用未过期 token，临近过期再自动登录刷新。
