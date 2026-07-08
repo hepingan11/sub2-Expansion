@@ -27,6 +27,11 @@ func (app *App) router() *gin.Engine {
 	user.POST("/refresh", app.refreshUserToken)
 	protectedUser := router.Group("/api/user", app.userAuth)
 	protectedUser.GET("/me", app.getCurrentSub2APIUser)
+	protectedUser.GET("/check-in", app.getUserCheckInStatus)
+	protectedUser.POST("/check-in", app.userCheckIn)
+	protectedUser.POST("/social-bindings", app.bindSocialAccount)
+	protectedUser.GET("/recharge-rewards", app.listUserRechargeRewards)
+	protectedUser.POST("/recharge-rewards/:activityId/tiers/:tierId/claim", app.claimRechargeReward)
 
 	admin := router.Group("/api/admin")
 	admin.POST("/login", app.login)
@@ -46,6 +51,10 @@ func (app *App) router() *gin.Engine {
 	protected.GET("/stats", app.stats)
 	protected.GET("/settings/check-in", app.getCheckInSettings)
 	protected.PUT("/settings/check-in", app.updateCheckInSettings)
+	protected.GET("/recharge-activities", app.listRechargeActivities)
+	protected.POST("/recharge-activities", app.createRechargeActivity)
+	protected.PUT("/recharge-activities/:id", app.updateRechargeActivity)
+	protected.DELETE("/recharge-activities/:id", app.deleteRechargeActivity)
 
 	return router
 }

@@ -52,6 +52,62 @@ button {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28);
 }
 
+.dual-login-panel {
+  width: min(460px, 100%);
+}
+
+.login-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.login-panel-head .brand-mark {
+  margin-bottom: 0;
+}
+
+.login-mode-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(82px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8f4ea;
+}
+
+.login-mode-toggle button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.login-mode-toggle button.is-active {
+  color: #fff;
+  background: var(--ink);
+  box-shadow: 0 8px 18px rgba(29, 37, 35, 0.18);
+}
+
+.social-bind-hint {
+  margin: -12px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid rgba(39, 92, 146, 0.22);
+  border-radius: 6px;
+  color: var(--blue);
+  background: rgba(39, 92, 146, 0.08);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
 .brand-mark {
   width: 52px;
   height: 52px;
@@ -152,6 +208,392 @@ textarea {
   grid-template-columns: 232px minmax(0, 1fr);
   gap: 18px;
   padding: 14px 16px 40px;
+}
+
+.user-layout {
+  width: min(1120px, calc(100% - 32px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 18px 0 42px;
+}
+
+.user-topbar,
+.user-brand {
+  display: flex;
+  align-items: center;
+}
+
+.user-topbar {
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 0 22px;
+}
+
+.user-brand {
+  gap: 12px;
+}
+
+.user-brand h1 {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 42px);
+  letter-spacing: 0;
+}
+
+.user-hero {
+  min-height: 190px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 26px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 253, 247, 0.96), rgba(237, 248, 241, 0.94)),
+    repeating-linear-gradient(90deg, transparent 0 34px, rgba(22, 115, 74, 0.08) 34px 35px);
+}
+
+.user-hero h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(30px, 5vw, 54px);
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.user-hero p {
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+.user-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.metric-ink strong {
+  color: var(--ink);
+}
+
+.user-checkin-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid rgba(22, 115, 74, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(237, 248, 241, 0.94)),
+    #fff;
+}
+
+.user-checkin-panel h2 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.user-checkin-panel p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.user-checkin-result {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(104px, auto)) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-checkin-result > div {
+  min-height: 54px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.user-checkin-result span,
+.checkin-code-line span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.user-checkin-result strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.checkin-code-line {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(209, 138, 44, 0.1);
+}
+
+.checkin-code-line strong {
+  overflow-wrap: anywhere;
+}
+
+.user-info-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.user-info-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.user-info-list div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.user-info-list dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.user-info-list dd {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.user-flash {
+  margin-bottom: 14px;
+}
+
+.user-reward-list {
+  display: grid;
+  gap: 14px;
+}
+
+.user-reward-activity {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 244, 234, 0.92)),
+    #fff;
+}
+
+.user-reward-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.user-reward-head strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.user-reward-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.user-reward-head > span {
+  color: var(--green);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.reward-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.reward-progress-meta span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--green);
+  font-weight: 800;
+  white-space: nowrap;
+  background: rgba(22, 115, 74, 0.1);
+}
+
+.reward-progress {
+  padding: 4px 8px 0;
+}
+
+.reward-progress-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: #e8dfcf;
+  box-shadow: inset 0 1px 2px rgba(36, 29, 21, 0.08);
+}
+
+.reward-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #16734a, #d18a2c);
+  transition: width 180ms ease;
+}
+
+.reward-progress-marker {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #f8f4ea;
+  border-radius: 50%;
+  background: #b8aa95;
+  box-shadow: 0 0 0 1px rgba(36, 29, 21, 0.12);
+  transform: translate(-50%, -50%);
+}
+
+.reward-progress-marker.is-ready {
+  background: #d18a2c;
+}
+
+.reward-progress-marker.is-claimed {
+  background: #16734a;
+}
+
+.reward-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.reward-progress-step {
+  display: grid;
+  grid-template-rows: minmax(52px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 116px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.reward-progress-step.is-ready {
+  border-color: rgba(209, 138, 44, 0.42);
+  background: rgba(255, 248, 234, 0.92);
+}
+
+.reward-progress-step.is-claimed {
+  border-color: rgba(22, 115, 74, 0.28);
+  background: rgba(238, 249, 242, 0.9);
+}
+
+.reward-progress-step span {
+  display: block;
+  color: var(--muted);
+}
+
+.reward-progress-step .reward-activity-name {
+  margin-bottom: 5px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.reward-progress-step strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+}
+
+.reward-progress-step .ghost-btn,
+.reward-progress-step .reward-status {
+  width: 100%;
+}
+
+.reward-status {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.reward-status.claimed {
+  color: var(--green);
+  background: rgba(22, 115, 74, 0.1);
+}
+
+.recharge-admin-panel .amount-stats-empty {
+  grid-column: 1 / -1;
+}
+
+.recharge-admin-card .site-icon.is-muted {
+  color: var(--muted);
+  background: #f2eee5;
+}
+
+.favorite-group-pill.is-disabled {
+  color: var(--muted);
+  background: #f2eee5;
+}
+
+.recharge-modal {
+  width: min(720px, 100%);
+}
+
+.toggle-row {
+  min-height: 42px;
+  display: flex;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.toggle-row input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.recharge-tier-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.recharge-tier-head,
+.recharge-tier-row {
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) 38px;
 }
 
 .sidebar {
@@ -1087,6 +1529,33 @@ tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .user-metric-grid,
+  .user-info-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .user-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .user-checkin-panel,
+  .user-checkin-result {
+    grid-template-columns: 1fr;
+  }
+
+  .user-reward-head {
+    flex-direction: column;
+  }
+
+  .user-reward-head > span {
+    white-space: normal;
+  }
+
+  .reward-progress-meta {
+    justify-content: flex-start;
+  }
+
   .toolbar {
     grid-template-columns: 1fr;
   }
@@ -1149,6 +1618,38 @@ tr:last-child td {
 
   .login-panel {
     padding: 24px;
+  }
+
+  .login-panel-head,
+  .user-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .login-mode-toggle,
+  .user-metric-grid,
+  .user-info-list {
+    grid-template-columns: 1fr;
+  }
+
+  .user-layout {
+    width: min(100% - 20px, 1120px);
+    padding-top: 10px;
+  }
+
+  .user-hero {
+    padding: 20px;
+  }
+
+  .reward-progress-step,
+  .recharge-tier-head,
+  .recharge-tier-row {
+    grid-template-columns: 1fr;
+  }
+
+  .reward-progress-step .ghost-btn,
+  .recharge-tier-row .icon-btn {
+    width: 100%;
   }
 
   .tier-row {

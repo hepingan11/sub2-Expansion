@@ -10,6 +10,9 @@ const (
 	statusAssigned  = "ASSIGNED"
 	statusUsed      = "USED"
 	statusVoided    = "VOIDED"
+	claimPending    = "PENDING"
+	claimClaimed    = "CLAIMED"
+	claimFailed     = "FAILED"
 
 	dailyMaxUsersKey = "check_in.daily_max_users"
 	prizeTiersKey    = "check_in.prize_tiers"

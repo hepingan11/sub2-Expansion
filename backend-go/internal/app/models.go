@@ -141,3 +141,127 @@ func (s *FavoriteSite) BeforeUpdate(*gorm.DB) error {
 	s.UpdatedAt = JSONTime{Time: time.Now()}
 	return nil
 }
+
+type RechargeActivity struct {
+	ID          uint64    `gorm:"primaryKey;column:id" json:"id"`
+	Name        string    `gorm:"column:name;size:120;not null" json:"name"`
+	Description string    `gorm:"column:description;type:text;not null" json:"description"`
+	Enabled     bool      `gorm:"column:enabled;not null;index:idx_recharge_activities_enabled" json:"enabled"`
+	StartAt     *JSONTime `gorm:"column:start_at" json:"startAt"`
+	EndAt       *JSONTime `gorm:"column:end_at" json:"endAt"`
+	CreatedAt   JSONTime  `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt   JSONTime  `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (RechargeActivity) TableName() string {
+	return "recharge_activities"
+}
+
+func (a *RechargeActivity) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if a.CreatedAt.Time.IsZero() {
+		a.CreatedAt = now
+	}
+	if a.UpdatedAt.Time.IsZero() {
+		a.UpdatedAt = now
+	}
+	return nil
+}
+
+func (a *RechargeActivity) BeforeUpdate(*gorm.DB) error {
+	a.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
+type RechargeRewardTier struct {
+	ID              uint64   `gorm:"primaryKey;column:id" json:"id"`
+	ActivityID      uint64   `gorm:"column:activity_id;not null;index:idx_recharge_reward_tiers_activity" json:"activityId"`
+	ThresholdAmount Amount   `gorm:"column:threshold_amount;type:decimal(10,2);not null" json:"thresholdAmount"`
+	RewardAmount    Amount   `gorm:"column:reward_amount;type:decimal(10,2);not null" json:"rewardAmount"`
+	SortOrder       int      `gorm:"column:sort_order;not null;index:idx_recharge_reward_tiers_activity" json:"sort"`
+	CreatedAt       JSONTime `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt       JSONTime `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (RechargeRewardTier) TableName() string {
+	return "recharge_reward_tiers"
+}
+
+func (t *RechargeRewardTier) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if t.CreatedAt.Time.IsZero() {
+		t.CreatedAt = now
+	}
+	if t.UpdatedAt.Time.IsZero() {
+		t.UpdatedAt = now
+	}
+	return nil
+}
+
+func (t *RechargeRewardTier) BeforeUpdate(*gorm.DB) error {
+	t.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
+type RechargeRewardClaim struct {
+	ID              uint64   `gorm:"primaryKey;column:id" json:"id"`
+	ActivityID      uint64   `gorm:"column:activity_id;not null;uniqueIndex:uk_recharge_reward_claim_user_tier" json:"activityId"`
+	TierID          uint64   `gorm:"column:tier_id;not null;uniqueIndex:uk_recharge_reward_claim_user_tier" json:"tierId"`
+	UserID          int64    `gorm:"column:user_id;not null;uniqueIndex:uk_recharge_reward_claim_user_tier;index:idx_recharge_reward_claims_user" json:"userId"`
+	ThresholdAmount Amount   `gorm:"column:threshold_amount;type:decimal(10,2);not null" json:"thresholdAmount"`
+	RewardAmount    Amount   `gorm:"column:reward_amount;type:decimal(10,2);not null" json:"rewardAmount"`
+	Status          string   `gorm:"column:status;size:20;not null;index:idx_recharge_reward_claims_status" json:"status"`
+	RedeemCode      string   `gorm:"column:redeem_code;size:128;not null" json:"redeemCode"`
+	ErrorMessage    string   `gorm:"column:error_message;type:text;not null" json:"errorMessage"`
+	CreatedAt       JSONTime `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt       JSONTime `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (RechargeRewardClaim) TableName() string {
+	return "recharge_reward_claims"
+}
+
+func (c *RechargeRewardClaim) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if c.CreatedAt.Time.IsZero() {
+		c.CreatedAt = now
+	}
+	if c.UpdatedAt.Time.IsZero() {
+		c.UpdatedAt = now
+	}
+	return nil
+}
+
+func (c *RechargeRewardClaim) BeforeUpdate(*gorm.DB) error {
+	c.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
+type SocialAccountBinding struct {
+	ID             uint64   `gorm:"primaryKey;column:id" json:"id"`
+	UserID         int64    `gorm:"column:user_id;not null;uniqueIndex:uk_social_bindings_user_platform;index:idx_social_bindings_user" json:"userId"`
+	Platform       string   `gorm:"column:platform;size:40;not null;uniqueIndex:uk_social_bindings_user_platform;uniqueIndex:uk_social_bindings_platform_external" json:"platform"`
+	ExternalUserID string   `gorm:"column:external_user_id;size:128;not null;uniqueIndex:uk_social_bindings_platform_external" json:"externalUserId"`
+	CreatedAt      JSONTime `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt      JSONTime `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (SocialAccountBinding) TableName() string {
+	return "social_account_bindings"
+}
+
+func (b *SocialAccountBinding) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if b.CreatedAt.Time.IsZero() {
+		b.CreatedAt = now
+	}
+	if b.UpdatedAt.Time.IsZero() {
+		b.UpdatedAt = now
+	}
+	return nil
+}
+
+func (b *SocialAccountBinding) BeforeUpdate(*gorm.DB) error {
+	b.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}

@@ -113,6 +113,54 @@ func (app *App) migrate() error {
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_favorite_sites_url ON favorite_sites (url)`,
 		`CREATE INDEX IF NOT EXISTS idx_favorite_sites_group_sort ON favorite_sites (group_name, sort_order)`,
+		`CREATE TABLE IF NOT EXISTS recharge_activities (
+			id BIGSERIAL PRIMARY KEY,
+			name VARCHAR(120) NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			start_at TIMESTAMPTZ NULL,
+			end_at TIMESTAMPTZ NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_recharge_activities_enabled ON recharge_activities (enabled)`,
+		`CREATE TABLE IF NOT EXISTS recharge_reward_tiers (
+			id BIGSERIAL PRIMARY KEY,
+			activity_id BIGINT NOT NULL,
+			threshold_amount DECIMAL(10, 2) NOT NULL,
+			reward_amount DECIMAL(10, 2) NOT NULL,
+			sort_order INT NOT NULL DEFAULT 0,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_recharge_reward_tiers_activity ON recharge_reward_tiers (activity_id, sort_order, id)`,
+		`CREATE TABLE IF NOT EXISTS recharge_reward_claims (
+			id BIGSERIAL PRIMARY KEY,
+			activity_id BIGINT NOT NULL,
+			tier_id BIGINT NOT NULL,
+			user_id BIGINT NOT NULL,
+			threshold_amount DECIMAL(10, 2) NOT NULL,
+			reward_amount DECIMAL(10, 2) NOT NULL,
+			status VARCHAR(20) NOT NULL,
+			redeem_code VARCHAR(128) NOT NULL DEFAULT '',
+			error_message TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_recharge_reward_claim_user_tier ON recharge_reward_claims (activity_id, tier_id, user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_recharge_reward_claims_user ON recharge_reward_claims (user_id, activity_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_recharge_reward_claims_status ON recharge_reward_claims (status)`,
+		`CREATE TABLE IF NOT EXISTS social_account_bindings (
+			id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			platform VARCHAR(40) NOT NULL,
+			external_user_id VARCHAR(128) NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_social_bindings_user_platform ON social_account_bindings (user_id, platform)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_social_bindings_platform_external ON social_account_bindings (platform, external_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_social_bindings_user ON social_account_bindings (user_id)`,
 	}
 
 	for _, statement := range sqlStatements {

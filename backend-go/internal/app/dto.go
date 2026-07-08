@@ -96,6 +96,75 @@ type Sub2APIConfig struct {
 	TimeoutSeconds   int    `json:"timeoutSeconds"`
 }
 
+type RechargeActivityRequest struct {
+	Name        string                      `json:"name"`
+	Description string                      `json:"description"`
+	Enabled     bool                        `json:"enabled"`
+	StartAt     string                      `json:"startAt"`
+	EndAt       string                      `json:"endAt"`
+	Tiers       []RechargeRewardTierRequest `json:"tiers"`
+}
+
+type RechargeRewardTierRequest struct {
+	ID              uint64 `json:"id"`
+	ThresholdAmount Amount `json:"thresholdAmount"`
+	RewardAmount    Amount `json:"rewardAmount"`
+	Sort            int    `json:"sort"`
+}
+
+type RechargeActivityResponse struct {
+	ID          uint64                       `json:"id"`
+	Name        string                       `json:"name"`
+	Description string                       `json:"description"`
+	Enabled     bool                         `json:"enabled"`
+	StartAt     *JSONTime                    `json:"startAt"`
+	EndAt       *JSONTime                    `json:"endAt"`
+	CreatedAt   JSONTime                     `json:"createdAt"`
+	UpdatedAt   JSONTime                     `json:"updatedAt"`
+	Tiers       []RechargeRewardTierResponse `json:"tiers"`
+}
+
+type RechargeRewardTierResponse struct {
+	ID              uint64   `json:"id"`
+	ActivityID      uint64   `json:"activityId"`
+	ThresholdAmount Amount   `json:"thresholdAmount"`
+	RewardAmount    Amount   `json:"rewardAmount"`
+	Sort            int      `json:"sort"`
+	CreatedAt       JSONTime `json:"createdAt"`
+	UpdatedAt       JSONTime `json:"updatedAt"`
+}
+
+type UserRechargeRewardsResponse struct {
+	TotalRecharged Amount                         `json:"totalRecharged"`
+	Activities     []UserRechargeActivityResponse `json:"activities"`
+}
+
+type UserRechargeActivityResponse struct {
+	ID          uint64                           `json:"id"`
+	Name        string                           `json:"name"`
+	Description string                           `json:"description"`
+	StartAt     *JSONTime                        `json:"startAt"`
+	EndAt       *JSONTime                        `json:"endAt"`
+	Tiers       []UserRechargeRewardTierResponse `json:"tiers"`
+}
+
+type UserRechargeRewardTierResponse struct {
+	ID              uint64   `json:"id"`
+	ThresholdAmount Amount   `json:"thresholdAmount"`
+	RewardAmount    Amount   `json:"rewardAmount"`
+	Eligible        bool     `json:"eligible"`
+	Claimed         bool     `json:"claimed"`
+	ClaimStatus     string   `json:"claimStatus"`
+	RedeemCode      string   `json:"redeemCode,omitempty"`
+	ClaimedAt       JSONTime `json:"claimedAt,omitempty"`
+}
+
+type ClaimRechargeRewardResponse struct {
+	ClaimID      uint64 `json:"claimId"`
+	RedeemCode   string `json:"redeemCode"`
+	RewardAmount Amount `json:"rewardAmount"`
+}
+
 type PageResponse[T any] struct {
 	Content       []T   `json:"content"`
 	TotalElements int64 `json:"totalElements"`

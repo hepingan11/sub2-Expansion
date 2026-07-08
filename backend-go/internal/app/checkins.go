@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,30 +25,59 @@ func (app *App) checkIn(c *gin.Context) {
 		return
 	}
 
+	app.respondCheckIn(c, userID, nil)
+}
+
+func (app *App) getUserCheckInStatus(c *gin.Context) {
+	user, ok := sub2APIUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
+		return
+	}
+	userID := strconv.FormatInt(user.ID, 10)
 	today := Today()
-	var existingRecord CheckInRecord
-	err := app.db.Where("user_id = ? AND sign_date = ?", userID, today).First(&existingRecord).Error
-	if err == nil {
-		var code RedeemCode
-		if err := app.db.First(&code, existingRecord.RedeemCodeID).Error; err == nil {
-			c.JSON(http.StatusOK, toCheckInResponse(code, true, "今日已签到"))
-			return
-		}
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if response, found, err := app.todayCheckInResponse(userID, today); err != nil {
 		serverError(c, err)
+		return
+	} else if found {
+		c.JSON(http.StatusOK, response)
+		return
+	}
+	c.JSON(http.StatusOK, CheckInResponse{
+		Success:          true,
+		AlreadyCheckedIn: false,
+		UserID:           &userID,
+		SignDate:         &today,
+		Amount:           Amount{Decimal: decimal.Zero},
+		Message:          "今日尚未签到",
+	})
+}
+
+func (app *App) userCheckIn(c *gin.Context) {
+	user, ok := sub2APIUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
+		return
+	}
+	app.respondCheckIn(c, strconv.FormatInt(user.ID, 10), &user.ID)
+}
+
+func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *int64) {
+	today := Today()
+	if response, found, err := app.todayCheckInResponse(userID, today); err != nil {
+		serverError(c, err)
+		return
+	} else if found {
+		c.JSON(http.StatusOK, response)
 		return
 	}
 
-	response, err := app.createCheckIn(c.Request.Context(), userID, today)
+	response, err := app.createCheckIn(c.Request.Context(), userID, today, autoRedeemUserID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || isDuplicateEntry(err) {
-			var record CheckInRecord
-			if err := app.db.Where("user_id = ? AND sign_date = ?", userID, today).First(&record).Error; err == nil {
-				var code RedeemCode
-				if err := app.db.First(&code, record.RedeemCodeID).Error; err == nil {
-					c.JSON(http.StatusOK, toCheckInResponse(code, true, "今日已签到"))
-					return
-				}
+			if response, found, err := app.todayCheckInResponse(userID, today); err == nil && found {
+				c.JSON(http.StatusOK, response)
+				return
 			}
 		}
 		if isBusinessConflict(err) {
@@ -59,7 +90,24 @@ func (app *App) checkIn(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate) (CheckInResponse, error) {
+func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInResponse, bool, error) {
+	var existingRecord CheckInRecord
+	err := app.db.Where("user_id = ? AND sign_date = ?", userID, today).First(&existingRecord).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return CheckInResponse{}, false, nil
+	}
+	if err != nil {
+		return CheckInResponse{}, false, err
+	}
+
+	var code RedeemCode
+	if err := app.db.First(&code, existingRecord.RedeemCodeID).Error; err != nil {
+		return CheckInResponse{}, false, err
+	}
+	return toCheckInResponse(code, true, "今日已签到"), true, nil
+}
+
+func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate, autoRedeemUserID *int64) (CheckInResponse, error) {
 	var response CheckInResponse
 	err := app.db.Transaction(func(tx *gorm.DB) error {
 		if err := app.consumeDailyQuota(tx, today); err != nil {
@@ -69,9 +117,23 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 		if err != nil {
 			return err
 		}
-		remoteCode, err := app.generateSub2APIRedeemCode(ctx, userID, today, drawnAmount)
-		if err != nil {
-			return err
+
+		status := statusAssigned
+		message := "签到成功"
+		remoteCode := ""
+		if autoRedeemUserID != nil {
+			remoteCode = sub2APIIdempotencyKey(userID, today, drawnAmount)
+			if err := app.createAndRedeemSub2APIBalance(ctx, *autoRedeemUserID, drawnAmount, remoteCode, "Daily check-in reward"); err != nil {
+				return err
+			}
+			status = statusUsed
+			message = "签到成功，奖励已自动入账"
+		} else {
+			generatedCode, err := app.generateSub2APIRedeemCode(ctx, userID, today, drawnAmount)
+			if err != nil {
+				return err
+			}
+			remoteCode = generatedCode
 		}
 
 		savedCode := RedeemCode{
@@ -79,7 +141,7 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 			UserID:   &userID,
 			SignDate: &today,
 			Amount:   drawnAmount,
-			Status:   statusAssigned,
+			Status:   status,
 		}
 		if err := tx.Create(&savedCode).Error; err != nil {
 			return err
@@ -88,7 +150,7 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 		if err := tx.Create(&record).Error; err != nil {
 			return err
 		}
-		response = toCheckInResponse(savedCode, false, "签到成功")
+		response = toCheckInResponse(savedCode, false, message)
 		return nil
 	})
 	return response, err

@@ -29,33 +29,56 @@ import {
 } from 'lucide-react';
 import {
   batchImportCodes,
+  bindSocialAccount,
+  CheckInResult,
+  clearUserSession,
   clearToken,
   CodePayload,
   createCode,
   createFavoriteSite,
+  createRechargeActivity,
+  claimRechargeReward,
   deleteCode,
   deleteFavoriteSite,
+  deleteRechargeActivity,
   fetchCheckInSettings,
   fetchCodes,
+  fetchCurrentUser,
   fetchFavoriteSiteGroups,
   fetchFavoriteSites,
+  fetchRechargeActivities,
+  fetchUserCheckInStatus,
+  fetchUserRechargeRewards,
   fetchStats,
   FavoriteSite,
   FavoriteSitePayload,
+  getUserToken,
   getToken,
   login,
   PrizeTierSetting,
   RedeemCode,
   RedeemCodeStatus,
+  RechargeActivity,
+  RechargeActivityPayload,
+  RechargeRewardTier,
   Stats,
   Sub2APISettings,
+  Sub2APIUserProfile,
+  SocialBindingPayload,
   updateCheckInSettings,
   updateCode,
-  updateFavoriteSite
+  updateFavoriteSite,
+  updateRechargeActivity,
+  UserRechargeRewards,
+  userCheckIn,
+  userLogin,
+  userLogin2FA
 } from './api';
 import './styles.css';
 
-type DashboardSection = 'home' | 'checkins' | 'favorites' | 'system';
+type DashboardSection = 'home' | 'checkins' | 'favorites' | 'recharge' | 'system';
+type AppView = 'login' | 'admin' | 'user';
+type LoginMode = 'user' | 'admin';
 
 const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
 const emptySub2APISettings: Sub2APISettings = {
@@ -101,9 +124,444 @@ const favoriteEmojiPresets = [
 ];
 
 function App() {
-  const [authed, setAuthed] = useState(Boolean(getToken()));
+  const [view, setView] = useState<AppView>(() => {
+    if (getUserToken()) return 'user';
+    if (getToken()) return 'admin';
+    return 'login';
+  });
 
-  return authed ? <Dashboard onLogout={() => setAuthed(false)} /> : <Login onLogin={() => setAuthed(true)} />;
+  if (view === 'admin') {
+    return <Dashboard onLogout={() => setView('login')} />;
+  }
+  if (view === 'user') {
+    return <UserDashboard onLogout={() => setView('login')} />;
+  }
+  return <UnifiedLogin onAdminLogin={() => setView('admin')} onUserLogin={() => setView('user')} />;
+}
+
+function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void; onUserLogin: () => void }) {
+  const pendingSocialBinding = useMemo(() => getPendingSocialBindingFromURL(), []);
+  const [mode, setMode] = useState<LoginMode>('user');
+  const [username, setUsername] = useState('admin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [tempToken, setTempToken] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      if (mode === 'admin') {
+        await login(username, password);
+        clearUserSession();
+        onAdminLogin();
+        return;
+      }
+
+      const data = tempToken
+        ? await userLogin2FA(tempToken, totpCode)
+        : await userLogin(email, password);
+      if (data.requires_2fa && data.temp_token) {
+        setTempToken(data.temp_token);
+        setMaskedEmail(data.user_email_masked ?? email);
+        setPassword('');
+        setTotpCode('');
+        return;
+      }
+      if (data.access_token) {
+        clearToken();
+        await bindPendingSocialAccount(pendingSocialBinding);
+        onUserLogin();
+        return;
+      }
+      setError('登录未返回有效的用户令牌');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '登录失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function switchMode(nextMode: LoginMode) {
+    setMode(nextMode);
+    setError('');
+    setTempToken('');
+    setTotpCode('');
+    setMaskedEmail('');
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-panel dual-login-panel">
+        <div className="login-panel-head">
+          <div className="brand-mark">
+            {mode === 'user' ? <UserRound size={26} /> : <ShieldCheck size={26} />}
+          </div>
+          <div className="login-mode-toggle" aria-label="选择登录类型">
+            <button type="button" className={mode === 'user' ? 'is-active' : ''} onClick={() => switchMode('user')}>
+              <UserRound size={16} />
+              用户
+            </button>
+            <button type="button" className={mode === 'admin' ? 'is-active' : ''} onClick={() => switchMode('admin')}>
+              <ShieldCheck size={16} />
+              管理员
+            </button>
+          </div>
+        </div>
+        <h1>{mode === 'user' ? '用户登录' : '管理员后台'}</h1>
+        <p>{mode === 'user' ? '使用 Sub2API 账号密码登录，进入你的专属页面。' : '管理员登录后可维护签到、兑换码和系统设置。'}</p>
+        {mode === 'user' && pendingSocialBinding && (
+          <div className="social-bind-hint">
+            登录后将绑定 {pendingSocialBinding.platform} 账号 {pendingSocialBinding.userId}
+          </div>
+        )}
+        <form onSubmit={submit} className="login-form">
+          {mode === 'admin' ? (
+            <>
+              <label>
+                管理员账号
+                <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
+              </label>
+              <label>
+                管理员密码
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+            </>
+          ) : tempToken ? (
+            <>
+              <div className="success-line">已验证密码，请输入 {maskedEmail || '当前账号'} 的 2FA 验证码。</div>
+              <label>
+                2FA 验证码
+                <input
+                  value={totpCode}
+                  onChange={(event) => setTotpCode(event.target.value)}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label>
+                Sub2API 邮箱
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                />
+              </label>
+              <label>
+                Sub2API 密码
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+            </>
+          )}
+          {error && <div className="error-line">{error}</div>}
+          <button type="submit" disabled={loading}>
+            {loading ? '登录中...' : tempToken ? '验证并进入' : '登录'}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function UserDashboard({ onLogout }: { onLogout: () => void }) {
+  const [user, setUser] = useState<Sub2APIUserProfile | null>(null);
+  const [rewards, setRewards] = useState<UserRechargeRewards | null>(null);
+  const [checkInStatus, setCheckInStatus] = useState<CheckInResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [claimingTierId, setClaimingTierId] = useState<number | null>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(() => consumeSocialBindingNotice());
+
+  async function loadUser() {
+    setLoading(true);
+    setError('');
+    try {
+      const [nextUser, nextRewards, nextCheckInStatus] = await Promise.all([
+        fetchCurrentUser(),
+        fetchUserRechargeRewards(),
+        fetchUserCheckInStatus()
+      ]);
+      setUser(nextUser);
+      setRewards(nextRewards);
+      setCheckInStatus(nextCheckInStatus);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载用户信息失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  function logout() {
+    clearUserSession();
+    onLogout();
+  }
+
+  async function checkIn() {
+    setCheckingIn(true);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await userCheckIn();
+      setCheckInStatus(result);
+      setSuccess(result.alreadyCheckedIn
+        ? '今日已签到'
+        : `签到成功，${Number(result.amount).toFixed(2)} 余额已自动入账`);
+      await loadUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '签到失败');
+    } finally {
+      setCheckingIn(false);
+    }
+  }
+
+  async function claim(activityId: number, tierId: number) {
+    setClaimingTierId(tierId);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await claimRechargeReward(activityId, tierId);
+      setSuccess(`已领取 ${Number(result.rewardAmount).toFixed(2)} 余额奖励`);
+      await loadUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '领取失败');
+    } finally {
+      setClaimingTierId(null);
+    }
+  }
+
+  const displayName = user?.username || user?.email || 'Sub2API 用户';
+  const balance = typeof user?.balance === 'number' ? user.balance.toFixed(2) : '-';
+  const totalRecharged = typeof rewards?.totalRecharged === 'number'
+    ? rewards.totalRecharged.toFixed(2)
+    : (typeof user?.total_recharged === 'number' ? user.total_recharged.toFixed(2) : '-');
+  const rewardActivities = rewards?.activities ?? [];
+  const rewardMilestones = rewardActivities
+    .flatMap((activity) => activity.tiers.map((tier) => ({ activity, tier })))
+    .sort((left, right) => Number(left.tier.thresholdAmount) - Number(right.tier.thresholdAmount));
+  const rewardMaxThreshold = Math.max(
+    ...rewardMilestones.map(({ tier }) => Number(tier.thresholdAmount)),
+    1
+  );
+  const rewardProgressPercent = Math.min(
+    100,
+    Math.max(0, (Number(rewards?.totalRecharged ?? 0) / rewardMaxThreshold) * 100)
+  );
+  const checkInAmount = checkInStatus?.code ? Number(checkInStatus.amount).toFixed(2) : '-';
+  const checkInDate = checkInStatus?.signDate ?? formatToday();
+
+  return (
+    <main className="user-layout">
+      <header className="user-topbar">
+        <div className="user-brand">
+          <div className="brand-mark compact">
+            <UserRound size={21} />
+          </div>
+          <div>
+            <span className="eyebrow">User Center</span>
+            <h1>用户专属页面</h1>
+          </div>
+        </div>
+        <button className="ghost-btn" onClick={logout} type="button">
+          <LogOut size={18} />
+          退出
+        </button>
+      </header>
+
+      {error && <div className="error-banner">{error}</div>}
+      {success && <div className="success-line user-flash">{success}</div>}
+
+      <section className="user-hero">
+        <div>
+          <span className="eyebrow">Sub2API Account</span>
+          <h2>{loading ? '正在加载...' : displayName}</h2>
+          <p>{user?.email || '登录后可查看你的账户余额、并发额度和账号状态。'}</p>
+        </div>
+        <button className="ghost-btn" type="button" onClick={loadUser} disabled={loading}>
+          <CheckCircle2 size={17} />
+          {loading ? '刷新中...' : '刷新'}
+        </button>
+      </section>
+
+      <section className="user-metric-grid">
+        <article className="metric metric-green">
+          <span>余额</span>
+          <strong>{balance}</strong>
+        </article>
+        <article className="metric metric-blue">
+          <span>并发额度</span>
+          <strong>{user?.concurrency ?? '-'}</strong>
+        </article>
+        <article className="metric metric-ink">
+          <span>账号状态</span>
+          <strong>{user?.status || '-'}</strong>
+        </article>
+        <article className="metric metric-red">
+          <span>累计充值</span>
+          <strong>{totalRecharged}</strong>
+        </article>
+      </section>
+
+      <section className="user-checkin-panel">
+        <div>
+          <span className="eyebrow">Daily Check-in</span>
+          <h2>{checkInStatus?.alreadyCheckedIn ? '今日已签到' : '今日签到'}</h2>
+          <p>{checkInStatus?.alreadyCheckedIn ? '今天的奖励已发放，明天再来领取新的签到奖励。' : '点击后将使用当前登录账号签到，奖励余额会自动入账。'}</p>
+        </div>
+        <div className="user-checkin-result">
+          <div>
+            <span>签到日期</span>
+            <strong>{checkInDate}</strong>
+          </div>
+          <div>
+            <span>奖励金额</span>
+            <strong>{checkInAmount}</strong>
+          </div>
+          <button
+            className="primary-btn"
+            type="button"
+            onClick={checkIn}
+            disabled={loading || checkingIn || checkInStatus?.alreadyCheckedIn}
+          >
+            <CalendarCheck2 size={18} />
+            {checkingIn ? '签到中...' : checkInStatus?.alreadyCheckedIn ? '已签到' : '立即签到'}
+          </button>
+        </div>
+        {checkInStatus?.code && (
+          <div className="checkin-code-line">
+            <span>入账凭证</span>
+            <strong>{checkInStatus.code}</strong>
+          </div>
+        )}
+      </section>
+
+      <section className="user-info-panel recharge-reward-panel">
+        <div className="settings-title">
+          <CircleDollarSign size={18} />
+          <span>累计充值活动</span>
+        </div>
+        <div className="user-reward-list">
+          {rewardMilestones.length > 0 && (
+            <article className="user-reward-activity">
+              <div className="user-reward-head">
+                <div>
+                  <strong>累计充值总进度</strong>
+                  <p>所有活动档位共用一条进度线，按达标金额从低到高领取。</p>
+                </div>
+                <div className="reward-progress-meta">
+                  <span>当前 {totalRecharged}</span>
+                  <span>终点 {rewardMaxThreshold.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="reward-progress" aria-label="累计充值活动总进度">
+                <div className="reward-progress-track">
+                  <div className="reward-progress-fill" style={{ width: `${rewardProgressPercent}%` }} />
+                  {rewardMilestones.map(({ activity, tier }) => {
+                    const markerLeft = Math.min(
+                      100,
+                      Math.max(0, (Number(tier.thresholdAmount) / rewardMaxThreshold) * 100)
+                    );
+                    return (
+                      <span
+                        className={`reward-progress-marker ${
+                          tier.claimed ? 'is-claimed' : tier.eligible ? 'is-ready' : ''
+                        }`}
+                        key={`${activity.id}-${tier.id}`}
+                        style={{ left: `${markerLeft}%` }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="reward-progress-steps">
+                {rewardMilestones.map(({ activity, tier }) => (
+                  <div
+                    className={`reward-progress-step ${
+                      tier.claimed ? 'is-claimed' : tier.eligible ? 'is-ready' : ''
+                    }`}
+                    key={`${activity.id}-${tier.id}`}
+                  >
+                    <div>
+                      <span className="reward-activity-name">{activity.name}</span>
+                      <span>满 {Number(tier.thresholdAmount).toFixed(2)}</span>
+                      <strong>奖励 {Number(tier.rewardAmount).toFixed(2)}</strong>
+                    </div>
+                    {tier.claimed ? (
+                      <span className="reward-status claimed">已领取</span>
+                    ) : (
+                      <button
+                        className="ghost-btn"
+                        type="button"
+                        disabled={!tier.eligible || claimingTierId === tier.id}
+                        onClick={() => claim(activity.id, tier.id)}
+                      >
+                        {claimingTierId === tier.id ? '领取中...' : tier.eligible ? '领取' : '未达标'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </article>
+          )}
+          {!loading && rewardMilestones.length === 0 && (
+            <div className="amount-stats-empty">暂无可参与的累计充值活动</div>
+          )}
+        </div>
+      </section>
+
+      <section className="user-info-panel">
+        <div className="settings-title">
+          <KeyRound size={18} />
+          <span>账户信息</span>
+        </div>
+        <dl className="user-info-list">
+          <div>
+            <dt>用户 ID</dt>
+            <dd>{user?.id ?? '-'}</dd>
+          </div>
+          <div>
+            <dt>角色</dt>
+            <dd>{user?.role || '-'}</dd>
+          </div>
+          <div>
+            <dt>运行模式</dt>
+            <dd>{user?.run_mode || '-'}</dd>
+          </div>
+          <div>
+            <dt>创建时间</dt>
+            <dd>{formatOptionalDate(user?.created_at)}</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+  );
 }
 
 function Login({ onLogin }: { onLogin: () => void }) {
@@ -184,6 +642,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [favoriteTotalPages, setFavoriteTotalPages] = useState(1);
   const [editingFavorite, setEditingFavorite] = useState<FavoriteSite | null>(null);
   const [favoriteModalOpen, setFavoriteModalOpen] = useState(false);
+  const [rechargeActivities, setRechargeActivities] = useState<RechargeActivity[]>([]);
+  const [editingRechargeActivity, setEditingRechargeActivity] = useState<RechargeActivity | null>(null);
+  const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
   const [dailyMaxUsers, setDailyMaxUsers] = useState(0);
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
   const [prizeTiers, setPrizeTiers] = useState<PrizeTierSetting[]>([]);
@@ -239,6 +700,18 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function loadRechargeActivities() {
+    setLoading(true);
+    setError('');
+    try {
+      setRechargeActivities(await fetchRechargeActivities());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载充值活动失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     load(0);
   }, []);
@@ -246,6 +719,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     if (activeSection === 'favorites') {
       loadFavoriteSites(0);
+    }
+    if (activeSection === 'recharge') {
+      loadRechargeActivities();
     }
   }, [activeSection]);
 
@@ -258,6 +734,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   ], [stats]);
   const amountOptions = useMemo(() => toAmountOptions(stats.amountStats, prizeTierDrafts), [stats.amountStats, prizeTierDrafts]);
   const navItems = [
+    { key: 'recharge' as const, label: '充值活动', icon: CircleDollarSign },
     { key: 'home' as const, label: '首页', icon: Home },
     { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
     { key: 'favorites' as const, label: '网站收藏', icon: Bookmark },
@@ -786,6 +1263,87 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </>
       )}
 
+      {activeSection === 'recharge' && (
+        <>
+          <section className="toolbar favorite-toolbar">
+            <div className="settings-title">
+              <CircleDollarSign size={18} />
+              <span>累计充值活动</span>
+            </div>
+            <span />
+            <button
+              className="ghost-btn"
+              type="button"
+              onClick={() => {
+                setEditingRechargeActivity(null);
+                setRechargeModalOpen(true);
+              }}
+            >
+              <Plus size={17} />
+              新建活动
+            </button>
+            <button className="ghost-btn" type="button" onClick={loadRechargeActivities} disabled={loading}>
+              <CheckCircle2 size={17} />
+              刷新
+            </button>
+          </section>
+          <section className="favorite-card-panel recharge-admin-panel">
+            <div className="favorite-card-grid">
+              {rechargeActivities.map((activity) => (
+                <article className="favorite-card recharge-admin-card" key={activity.id}>
+                  <div className="favorite-card-link">
+                    <div className="favorite-card-main">
+                      <div className={`site-icon preset ${activity.enabled ? '' : 'is-muted'}`}>
+                        <CircleDollarSign size={20} />
+                      </div>
+                      <div className="favorite-card-content">
+                        <div className="favorite-card-title">
+                          <span>{activity.name}</span>
+                        </div>
+                        <p>{activity.description || '未填写活动说明'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="favorite-card-footer">
+                    <span className={`favorite-group-pill ${activity.enabled ? '' : 'is-disabled'}`}>
+                      {activity.enabled ? '启用中' : '已停用'} · {activity.tiers.length} 档
+                    </span>
+                    <div className="favorite-card-actions">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="编辑"
+                        onClick={() => {
+                          setEditingRechargeActivity(activity);
+                          setRechargeModalOpen(true);
+                        }}
+                      >
+                        <Pencil size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="删除"
+                        onClick={async () => {
+                          if (!window.confirm('确认删除这个累计充值活动？')) return;
+                          await deleteRechargeActivity(activity.id);
+                          loadRechargeActivities();
+                        }}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+              {!loading && rechargeActivities.length === 0 && (
+                <div className="amount-stats-empty">暂无累计充值活动，点击新建活动开始配置。</div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
       {activeSection === 'system' && (
         <form className="settings-panel" onSubmit={saveCheckInSettings}>
           <div className="settings-panel-head">
@@ -897,6 +1455,18 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             setFavoriteModalOpen(false);
             setEditingFavorite(null);
             loadFavoriteSites(favoritePage);
+          }}
+        />
+      )}
+
+      {rechargeModalOpen && (
+        <RechargeActivityModal
+          activity={editingRechargeActivity}
+          onClose={() => setRechargeModalOpen(false)}
+          onSaved={() => {
+            setRechargeModalOpen(false);
+            setEditingRechargeActivity(null);
+            loadRechargeActivities();
           }}
         />
       )}
@@ -1229,6 +1799,144 @@ function FavoriteSiteModal({ site, groups, onClose, onSaved, onDeleted }: { site
   );
 }
 
+function RechargeActivityModal({ activity, onClose, onSaved }: { activity: RechargeActivity | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(activity?.name ?? '');
+  const [description, setDescription] = useState(activity?.description ?? '');
+  const [enabled, setEnabled] = useState(activity?.enabled ?? true);
+  const [startAt, setStartAt] = useState(toDateTimeLocal(activity?.startAt));
+  const [endAt, setEndAt] = useState(toDateTimeLocal(activity?.endAt));
+  const [tiers, setTiers] = useState(() => toRechargeTierDrafts(activity?.tiers));
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  function updateTier(index: number, key: keyof RechargeRewardTierDraft, value: string) {
+    setTiers((current) => current.map((tier, currentIndex) => (
+      currentIndex === index ? { ...tier, [key]: value } : tier
+    )));
+  }
+
+  function removeTier(index: number) {
+    setTiers((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const payload = parseRechargeActivityPayload({ name, description, enabled, startAt, endAt, tiers });
+      if (typeof payload === 'string') {
+        setError(payload);
+        return;
+      }
+      if (activity) {
+        await updateRechargeActivity(activity.id, payload);
+      } else {
+        await createRechargeActivity(payload);
+      }
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存充值活动失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal recharge-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">{activity ? 'Edit Campaign' : 'New Campaign'}</span>
+            <h2>{activity ? '编辑累计充值活动' : '新建累计充值活动'}</h2>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} />
+          </button>
+        </div>
+
+        <label>
+          活动名称
+          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required />
+        </label>
+        <label>
+          活动说明
+          <textarea
+            className="compact-textarea"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={3}
+          />
+        </label>
+        <div className="modal-grid two">
+          <label>
+            开始时间
+            <input type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} />
+          </label>
+          <label>
+            结束时间
+            <input type="datetime-local" value={endAt} onChange={(event) => setEndAt(event.target.value)} />
+          </label>
+        </div>
+        <label className="toggle-row">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          启用活动
+        </label>
+
+        <div className="recharge-tier-editor">
+          <div className="tier-editor-head">
+            <span>奖励档位</span>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => setTiers((current) => [...current, { thresholdAmount: '100.00', rewardAmount: '10.00', sort: String(current.length) }])}
+            >
+              <Plus size={17} />
+              添加档位
+            </button>
+          </div>
+          <div className="tier-table">
+            <div className="tier-table-head recharge-tier-head">
+              <span>累计充值达标</span>
+              <span>奖励余额</span>
+              <span>操作</span>
+            </div>
+            <div className="tier-list">
+              {tiers.map((tier, index) => (
+                <div className="tier-row recharge-tier-row" key={`${tier.id ?? 'new'}-${index}`}>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={tier.thresholdAmount}
+                    onChange={(event) => updateTier(index, 'thresholdAmount', event.target.value)}
+                  />
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={tier.rewardAmount}
+                    onChange={(event) => updateTier(index, 'rewardAmount', event.target.value)}
+                  />
+                  <button type="button" className="icon-btn" disabled={tiers.length <= 1} onClick={() => removeTier(index)}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {error && <div className="error-line">{error}</div>}
+        <button className="primary-btn wide" type="submit" disabled={saving}>
+          <CheckCircle2 size={18} />
+          {saving ? '保存中...' : '保存活动'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function CodeModal({ code, onClose, onSaved }: { code: RedeemCode | null; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<CodePayload>({
     code: code?.code ?? '',
@@ -1374,6 +2082,111 @@ function formatDateTime(value: string) {
   return value ? value.replace('T', ' ').slice(0, 19) : '-';
 }
 
+interface RechargeRewardTierDraft {
+  id?: number;
+  thresholdAmount: string;
+  rewardAmount: string;
+  sort: string;
+}
+
+function toRechargeTierDrafts(tiers: RechargeRewardTier[] = []): RechargeRewardTierDraft[] {
+  const source = tiers.length ? tiers : [{ thresholdAmount: 100, rewardAmount: 10, sort: 0 }];
+  return source.map((tier, index) => ({
+    id: tier.id,
+    thresholdAmount: Number(tier.thresholdAmount).toFixed(2),
+    rewardAmount: Number(tier.rewardAmount).toFixed(2),
+    sort: String(tier.sort ?? index)
+  }));
+}
+
+function parseRechargeActivityPayload(input: {
+  name: string;
+  description: string;
+  enabled: boolean;
+  startAt: string;
+  endAt: string;
+  tiers: RechargeRewardTierDraft[];
+}): RechargeActivityPayload | string {
+  const name = input.name.trim();
+  if (!name) return '请填写活动名称';
+  if (input.startAt && input.endAt && new Date(input.endAt).getTime() <= new Date(input.startAt).getTime()) {
+    return '结束时间必须晚于开始时间';
+  }
+  if (input.tiers.length === 0) return '请至少配置一个奖励档位';
+  const tiers = input.tiers.map((tier, index) => ({
+    id: tier.id,
+    thresholdAmount: Number(tier.thresholdAmount),
+    rewardAmount: Number(tier.rewardAmount),
+    sort: Number(tier.sort || index)
+  }));
+  if (tiers.some((tier) => !Number.isFinite(tier.thresholdAmount) || tier.thresholdAmount <= 0)) {
+    return '达标充值金额必须大于 0';
+  }
+  if (tiers.some((tier) => !Number.isFinite(tier.rewardAmount) || tier.rewardAmount <= 0)) {
+    return '奖励余额必须大于 0';
+  }
+  return {
+    name,
+    description: input.description.trim(),
+    enabled: input.enabled,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    tiers
+  };
+}
+
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return '';
+  return value.replace(' ', 'T').slice(0, 16);
+}
+
+function getPendingSocialBindingFromURL(): SocialBindingPayload | null {
+  const params = new URLSearchParams(window.location.search);
+  const platform = params.get('platform')?.trim() ?? '';
+  const userId = params.get('userid')?.trim() ?? '';
+  if (!platform || !userId) {
+    return null;
+  }
+  return { platform, userId };
+}
+
+async function bindPendingSocialAccount(binding: SocialBindingPayload | null) {
+  if (!binding) {
+    return;
+  }
+  try {
+    const result = await bindSocialAccount(binding);
+    if (result.bound) {
+      sessionStorage.setItem('social_binding_notice', `已绑定 ${result.platform} 账号 ${result.externalUserId}`);
+    } else if (result.alreadyBound) {
+      sessionStorage.setItem('social_binding_notice', `当前账号已绑定 ${result.platform}，本次不会覆盖`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '社交账号绑定失败';
+    sessionStorage.setItem('social_binding_notice', `登录成功，但社交账号绑定失败：${message}`);
+  }
+}
+
+function consumeSocialBindingNotice() {
+  const notice = sessionStorage.getItem('social_binding_notice') ?? '';
+  if (notice) {
+    sessionStorage.removeItem('social_binding_notice');
+  }
+  return notice;
+}
+
+function formatOptionalDate(value: unknown) {
+  return typeof value === 'string' && value ? formatDateTime(value) : '-';
+}
+
+function formatToday() {
+  return new Date().toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).replaceAll('/', '-');
+}
+
 function sectionTitle(section: DashboardSection) {
   switch (section) {
     case 'home':
@@ -1382,6 +2195,8 @@ function sectionTitle(section: DashboardSection) {
       return '签到管理';
     case 'favorites':
       return '网站收藏';
+    case 'recharge':
+      return '充值活动';
     case 'system':
       return '系统设置';
   }
@@ -1516,3 +2331,4 @@ function settingsChanged(
 }
 
 createRoot(document.getElementById('root')!).render(<App />);
+
