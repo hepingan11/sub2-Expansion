@@ -386,6 +386,62 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.social-binding-section {
+  display: grid;
+  gap: 10px;
+}
+
+.social-binding-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+}
+
+.social-binding-head strong {
+  font-size: 15px;
+}
+
+.social-binding-head span {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.social-binding-list {
+  display: grid;
+  gap: 10px;
+}
+
+.social-binding-item {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.5fr) minmax(140px, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.social-binding-item div {
+  min-width: 0;
+}
+
+.social-binding-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.social-binding-item strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
 .user-flash {
   margin-bottom: 14px;
 }
@@ -846,6 +902,32 @@ textarea {
   padding: 12px 14px 14px;
 }
 
+.checkin-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.checkin-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.checkin-chart-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.checkin-chart {
+  width: 100%;
+  height: 300px;
+}
+
 .checkin-settings-head {
   grid-template-columns: minmax(150px, 1fr) auto;
   margin-bottom: 12px;
@@ -960,9 +1042,71 @@ textarea {
   gap: 10px;
 }
 
+.group-rate-panel {
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.group-rate-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, auto) minmax(180px, 240px) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.group-rate-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.group-rate-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) 110px 170px 100px 100px;
+  gap: 10px;
+  align-items: center;
+  min-width: 780px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.group-rate-row:first-child {
+  border-top: 0;
+}
+
+.group-rate-head {
+  color: var(--muted);
+  background: #f8f4ea;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.group-rate-row strong,
+.group-rate-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.group-rate-row small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toggle-row.compact {
+  min-height: auto;
+  font-size: 13px;
+}
+
+.rate-chart {
+  width: 100%;
+  height: 360px;
+}
+
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 150px auto auto;
+  grid-template-columns: minmax(220px, 1fr) 150px auto auto auto;
   gap: 10px;
   align-items: center;
   margin-bottom: 14px;
@@ -1540,7 +1684,12 @@ tr:last-child td {
   }
 
   .user-checkin-panel,
-  .user-checkin-result {
+  .user-checkin-result,
+  .social-binding-item {
+    grid-template-columns: 1fr;
+  }
+
+  .checkin-chart-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1574,6 +1723,10 @@ tr:last-child td {
   }
 
   .sub2api-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .group-rate-controls {
     grid-template-columns: 1fr;
   }
 

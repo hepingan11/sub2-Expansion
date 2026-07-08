@@ -28,9 +28,10 @@ type Config struct {
 }
 
 type App struct {
-	db                 *gorm.DB
-	cfg                Config
-	sub2APITokenMu     sync.Mutex
-	sub2APIToken       string
-	sub2APITokenExpiry time.Time
+	db                        *gorm.DB
+	cfg                       Config
+	sub2APITokenMu            sync.Mutex
+	sub2APIToken              string
+	sub2APITokenExpiry        time.Time
+	sub2APIGroupRateMonitorMu sync.Mutex
 }

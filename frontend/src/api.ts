@@ -96,6 +96,18 @@ export interface CheckInResult {
   message: string;
 }
 
+export interface DailyCheckInStat {
+  signDate: string;
+  amount: number;
+  users: number;
+}
+
+export interface CheckInStats {
+  todayAmount: number;
+  todayUsers: number;
+  daily: DailyCheckInStat[];
+}
+
 export interface PrizeTierSetting {
   amount: number;
   probability: number;
@@ -112,6 +124,15 @@ export interface Sub2APISettings {
   timeoutSeconds: number;
 }
 
+export interface UserSocialBinding {
+  id: number;
+  userId: number;
+  platform: string;
+  externalUserId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Sub2APIUserProfile {
   id?: number;
   email?: string;
@@ -125,6 +146,7 @@ export interface Sub2APIUserProfile {
   created_at?: string;
   updated_at?: string;
   run_mode?: string;
+  socialBindings?: UserSocialBinding[];
   [key: string]: unknown;
 }
 
@@ -213,6 +235,40 @@ export interface SocialBindingResult {
   bound: boolean;
   alreadyBound: boolean;
   message: string;
+}
+
+export interface Sub2APIGroupRateMonitorSettings {
+  enabled: boolean;
+  refreshIntervalSeconds: number;
+  monitoredGroupIds: string[];
+  publicGroupIds: string[];
+}
+
+export interface Sub2APIGroupRateGroup {
+  groupId: string;
+  groupName: string;
+  rateMultiplier: number;
+  monitored: boolean;
+  publicVisible: boolean;
+  lastSeenAt: string;
+}
+
+export interface Sub2APIGroupRatePoint {
+  time: string;
+  rate: number;
+}
+
+export interface Sub2APIGroupRateSeries {
+  groupId: string;
+  groupName: string;
+  publicVisible: boolean;
+  points: Sub2APIGroupRatePoint[];
+}
+
+export interface Sub2APIGroupRateMonitor {
+  settings: Sub2APIGroupRateMonitorSettings;
+  groups: Sub2APIGroupRateGroup[];
+  series: Sub2APIGroupRateSeries[];
 }
 
 export function getToken() {
@@ -315,6 +371,10 @@ export async function fetchCheckInSettings() {
   return request<CheckInSettings>('/api/admin/settings/check-in');
 }
 
+export async function fetchCheckInStats() {
+  return request<CheckInStats>('/api/admin/check-in-stats');
+}
+
 export async function updateCheckInSettings(dailyMaxUsers: number, prizeTiers: PrizeTierSetting[], sub2api: Sub2APISettings) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
@@ -415,6 +475,27 @@ export async function deleteRechargeActivity(id: number) {
   return request<void>(`/api/admin/recharge-activities/${id}`, {
     method: 'DELETE'
   });
+}
+
+export async function fetchSub2APIGroupRateMonitor() {
+  return request<Sub2APIGroupRateMonitor>('/api/admin/sub2api/group-rate-monitor');
+}
+
+export async function updateSub2APIGroupRateMonitor(settings: Sub2APIGroupRateMonitorSettings) {
+  return request<Sub2APIGroupRateMonitor>('/api/admin/sub2api/group-rate-monitor', {
+    method: 'PUT',
+    body: JSON.stringify(settings)
+  });
+}
+
+export async function refreshSub2APIGroupRates() {
+  return request<Sub2APIGroupRateMonitor>('/api/admin/sub2api/group-rate-monitor/refresh', {
+    method: 'POST'
+  });
+}
+
+export async function fetchPublicSub2APIGroupRateSeries() {
+  return request<Sub2APIGroupRateSeries[]>('/api/public/sub2api/group-rate-series', {}, false);
 }
 
 async function request<T>(path: string, init: RequestInit = {}, withAuth = true): Promise<T> {

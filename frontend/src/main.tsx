@@ -1,5 +1,6 @@
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import * as echarts from 'echarts';
 import {
   CalendarCheck2,
   ChevronDown,
@@ -30,6 +31,7 @@ import {
 import {
   batchImportCodes,
   bindSocialAccount,
+  CheckInStats,
   CheckInResult,
   clearUserSession,
   clearToken,
@@ -42,11 +44,14 @@ import {
   deleteFavoriteSite,
   deleteRechargeActivity,
   fetchCheckInSettings,
+  fetchCheckInStats,
   fetchCodes,
   fetchCurrentUser,
   fetchFavoriteSiteGroups,
   fetchFavoriteSites,
+  fetchPublicSub2APIGroupRateSeries,
   fetchRechargeActivities,
+  fetchSub2APIGroupRateMonitor,
   fetchUserCheckInStatus,
   fetchUserRechargeRewards,
   fetchStats,
@@ -62,6 +67,9 @@ import {
   RechargeActivityPayload,
   RechargeRewardTier,
   Stats,
+  Sub2APIGroupRateMonitor,
+  Sub2APIGroupRateMonitorSettings,
+  Sub2APIGroupRateSeries,
   Sub2APISettings,
   Sub2APIUserProfile,
   SocialBindingPayload,
@@ -69,6 +77,8 @@ import {
   updateCode,
   updateFavoriteSite,
   updateRechargeActivity,
+  updateSub2APIGroupRateMonitor,
+  refreshSub2APIGroupRates,
   UserRechargeRewards,
   userCheckIn,
   userLogin,
@@ -76,11 +86,12 @@ import {
 } from './api';
 import './styles.css';
 
-type DashboardSection = 'home' | 'checkins' | 'favorites' | 'recharge' | 'system';
+type DashboardSection = 'home' | 'checkins' | 'favorites' | 'recharge' | 'rates' | 'system';
 type AppView = 'login' | 'admin' | 'user';
 type LoginMode = 'user' | 'admin';
 
 const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
+const emptyCheckInStats: CheckInStats = { todayAmount: 0, todayUsers: 0, daily: [] };
 const emptySub2APISettings: Sub2APISettings = {
   baseUrl: '',
   authMode: 'password',
@@ -90,6 +101,16 @@ const emptySub2APISettings: Sub2APISettings = {
   adminPassword: '',
   adminPasswordSet: false,
   timeoutSeconds: 15
+};
+const emptyGroupRateMonitor: Sub2APIGroupRateMonitor = {
+  settings: {
+    enabled: true,
+    refreshIntervalSeconds: 300,
+    monitoredGroupIds: [],
+    publicGroupIds: []
+  },
+  groups: [],
+  series: []
 };
 
 const statusText: Record<RedeemCodeStatus, string> = {
@@ -293,6 +314,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   const [checkingIn, setCheckingIn] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(() => consumeSocialBindingNotice());
+  const [publicRateSeries, setPublicRateSeries] = useState<Sub2APIGroupRateSeries[]>([]);
 
   async function loadUser() {
     setLoading(true);
@@ -315,6 +337,9 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     loadUser();
+    fetchPublicSub2APIGroupRateSeries()
+      .then((series) => setPublicRateSeries(Array.isArray(series) ? series : []))
+      .catch(() => setPublicRateSeries([]));
   }, []);
 
   function logout() {
@@ -374,6 +399,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   );
   const checkInAmount = checkInStatus?.code ? Number(checkInStatus.amount).toFixed(2) : '-';
   const checkInDate = checkInStatus?.signDate ?? formatToday();
+  const socialBindings = Array.isArray(user?.socialBindings) ? user.socialBindings : [];
 
   return (
     <main className="user-layout">
@@ -475,7 +501,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
                 </div>
                 <div className="reward-progress-meta">
                   <span>当前 {totalRecharged}</span>
-                  <span>终点 {rewardMaxThreshold.toFixed(2)}</span>
+                  <span>最高奖励 {rewardMaxThreshold.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -536,6 +562,16 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </section>
 
+      {publicRateSeries.length > 0 && (
+        <section className="user-info-panel">
+          <div className="settings-title">
+            <Globe2 size={18} />
+            <span>公开分组倍率</span>
+          </div>
+          <RateLineChart series={publicRateSeries} />
+        </section>
+      )}
+
       <section className="user-info-panel">
         <div className="settings-title">
           <KeyRound size={18} />
@@ -547,18 +583,49 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
             <dd>{user?.id ?? '-'}</dd>
           </div>
           <div>
+            <dt>邮箱</dt>
+            <dd>{user?.email || '-'}</dd>
+          </div>
+          <div>
+            <dt>用户名</dt>
+            <dd>{user?.username || '-'}</dd>
+          </div>
+          <div>
             <dt>角色</dt>
             <dd>{user?.role || '-'}</dd>
           </div>
-          <div>
-            <dt>运行模式</dt>
-            <dd>{user?.run_mode || '-'}</dd>
-          </div>
-          <div>
-            <dt>创建时间</dt>
-            <dd>{formatOptionalDate(user?.created_at)}</dd>
-          </div>
         </dl>
+
+        <div className="social-binding-section">
+          <div className="social-binding-head">
+            <strong>已绑定平台</strong>
+            <span>{socialBindings.length} 个</span>
+          </div>
+          {loading ? (
+            <div className="amount-stats-empty">正在加载绑定平台</div>
+          ) : socialBindings.length > 0 ? (
+            <div className="social-binding-list">
+              {socialBindings.map((binding) => (
+                <article className="social-binding-item" key={binding.id}>
+                  <div>
+                    <span>平台</span>
+                    <strong>{formatPlatformName(binding.platform)}</strong>
+                  </div>
+                  <div>
+                    <span>平台用户 ID</span>
+                    <strong>{binding.externalUserId}</strong>
+                  </div>
+                  <div>
+                    <span>绑定时间</span>
+                    <strong>{formatOptionalDate(binding.createdAt)}</strong>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="amount-stats-empty">暂无绑定平台</div>
+          )}
+        </div>
       </section>
     </main>
   );
@@ -617,10 +684,119 @@ function Login({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+function RateLineChart({ series }: { series: Sub2APIGroupRateSeries[] }) {
+  const chartRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!chartRef.current || series.length === 0) {
+      return;
+    }
+    const chart = echarts.init(chartRef.current);
+    chart.setOption({
+      color: ['#2563eb', '#16a34a', '#dc2626', '#d18a2c', '#7c3aed', '#0891b2', '#4f46e5'],
+      tooltip: { trigger: 'axis' },
+      legend: { top: 0, type: 'scroll' },
+      grid: { left: 44, right: 18, top: 48, bottom: 36 },
+      xAxis: { type: 'time' },
+      yAxis: {
+        type: 'value',
+        min: 'dataMin',
+        axisLabel: { formatter: '{value}x' }
+      },
+      series: series.map((item) => ({
+        name: `${item.groupName}${item.publicVisible ? ' · 公开' : ''}`,
+        type: 'line',
+        smooth: true,
+        showSymbol: item.points.length < 18,
+        data: item.points.map((point) => [point.time, point.rate])
+      }))
+    });
+    const resize = () => chart.resize();
+    window.addEventListener('resize', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      chart.dispose();
+    };
+  }, [series]);
+
+  if (series.length === 0) {
+    return <div className="amount-stats-empty">暂无倍率变化数据</div>;
+  }
+
+  return <div className="rate-chart" ref={chartRef} />;
+}
+
+function CheckInTrendChart({
+  title,
+  daily,
+  valueKey,
+  unit,
+  color
+}: {
+  title: string;
+  daily: CheckInStats['daily'];
+  valueKey: 'amount' | 'users';
+  unit: string;
+  color: string;
+}) {
+  const chartRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!chartRef.current || daily.length === 0) {
+      return;
+    }
+    const chart = echarts.init(chartRef.current);
+    chart.setOption({
+      color: [color],
+      tooltip: { trigger: 'axis' },
+      grid: { left: 48, right: 18, top: 34, bottom: 34 },
+      xAxis: {
+        type: 'category',
+        data: daily.map((item) => item.signDate.slice(5)),
+        boundaryGap: false
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: valueKey === 'users' ? 1 : 0,
+        axisLabel: { formatter: `{value}${unit}` }
+      },
+      series: [{
+        name: title,
+        type: 'line',
+        smooth: true,
+        areaStyle: { opacity: 0.08 },
+        showSymbol: daily.length < 18,
+        data: daily.map((item) => Number(item[valueKey] ?? 0))
+      }]
+    });
+    const resize = () => chart.resize();
+    window.addEventListener('resize', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      chart.dispose();
+    };
+  }, [color, daily, title, unit, valueKey]);
+
+  if (daily.length === 0) {
+    return <div className="amount-stats-empty">暂无签到统计数据</div>;
+  }
+
+  return (
+    <div className="checkin-chart-card">
+      <div className="settings-title">
+        <CalendarCheck2 size={17} />
+        <span>{title}</span>
+      </div>
+      <div className="checkin-chart" ref={chartRef} />
+    </div>
+  );
+}
+
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [activeSection, setActiveSection] = useState<DashboardSection>('home');
   const [codes, setCodes] = useState<RedeemCode[]>([]);
   const [stats, setStats] = useState<Stats>(emptyStats);
+  const [checkInStats, setCheckInStats] = useState<CheckInStats>(emptyCheckInStats);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
@@ -653,6 +829,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [sub2apiDraft, setSub2apiDraft] = useState<Sub2APISettings>(emptySub2APISettings);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [groupRateMonitor, setGroupRateMonitor] = useState<Sub2APIGroupRateMonitor>(emptyGroupRateMonitor);
+  const [groupRateDraft, setGroupRateDraft] = useState<Sub2APIGroupRateMonitorSettings>(emptyGroupRateMonitor.settings);
+  const [groupRateSaving, setGroupRateSaving] = useState(false);
+  const [groupRateRefreshing, setGroupRateRefreshing] = useState(false);
+  const [groupRateSaved, setGroupRateSaved] = useState(false);
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -712,6 +893,32 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function loadCheckInStats() {
+    setLoading(true);
+    setError('');
+    try {
+      setCheckInStats(await fetchCheckInStats());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载签到统计失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadGroupRateMonitor() {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await fetchSub2APIGroupRateMonitor();
+      setGroupRateMonitor(data);
+      setGroupRateDraft(data.settings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载倍率监控失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     load(0);
   }, []);
@@ -722,6 +929,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
     if (activeSection === 'recharge') {
       loadRechargeActivities();
+    }
+    if (activeSection === 'checkins') {
+      loadCheckInStats();
+    }
+    if (activeSection === 'rates') {
+      loadGroupRateMonitor();
     }
   }, [activeSection]);
 
@@ -738,6 +951,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     { key: 'home' as const, label: '首页', icon: Home },
     { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
     { key: 'favorites' as const, label: '网站收藏', icon: Bookmark },
+    { key: 'rates' as const, label: '倍率监控', icon: Globe2 },
     { key: 'system' as const, label: '系统设置', icon: Settings2 }
   ];
 
@@ -791,6 +1005,55 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     } finally {
       setSettingsSaving(false);
     }
+  }
+
+  async function saveGroupRateMonitor(event: FormEvent) {
+    event.preventDefault();
+    setGroupRateSaving(true);
+    setGroupRateSaved(false);
+    setError('');
+    try {
+      const data = await updateSub2APIGroupRateMonitor(groupRateDraft);
+      setGroupRateMonitor(data);
+      setGroupRateDraft(data.settings);
+      setGroupRateSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存倍率监控失败');
+    } finally {
+      setGroupRateSaving(false);
+    }
+  }
+
+  async function refreshGroupRatesNow() {
+    setGroupRateRefreshing(true);
+    setError('');
+    try {
+      const data = await refreshSub2APIGroupRates();
+      setGroupRateMonitor(data);
+      setGroupRateDraft(data.settings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '刷新分组倍率失败');
+    } finally {
+      setGroupRateRefreshing(false);
+    }
+  }
+
+  function patchGroupRateDraft(patch: Partial<Sub2APIGroupRateMonitorSettings>) {
+    setGroupRateDraft((current) => ({ ...current, ...patch }));
+    setGroupRateSaved(false);
+  }
+
+  function toggleGroupRateId(key: 'monitoredGroupIds' | 'publicGroupIds', groupId: string, checked: boolean) {
+    setGroupRateDraft((current) => {
+      const values = new Set(current[key]);
+      if (checked) {
+        values.add(groupId);
+      } else {
+        values.delete(groupId);
+      }
+      return { ...current, [key]: Array.from(values).sort() };
+    });
+    setGroupRateSaved(false);
   }
 
   function setFavoriteCardRef(id: number, element: HTMLElement | null) {
@@ -966,6 +1229,34 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       {activeSection === 'checkins' && (
         <>
+      <section className="summary-grid checkin-summary-grid">
+        <article className="metric metric-green">
+          <span>今日签到消耗</span>
+          <strong>{Number(checkInStats.todayAmount).toFixed(2)}</strong>
+        </article>
+        <article className="metric metric-blue">
+          <span>今日签到人数</span>
+          <strong>{checkInStats.todayUsers}</strong>
+        </article>
+      </section>
+
+      <section className="checkin-chart-grid">
+        <CheckInTrendChart
+          title="30 日签到消耗金额"
+          daily={checkInStats.daily}
+          valueKey="amount"
+          unit="元"
+          color="#16a34a"
+        />
+        <CheckInTrendChart
+          title="30 日签到人数"
+          daily={checkInStats.daily}
+          valueKey="users"
+          unit="人"
+          color="#2563eb"
+        />
+      </section>
+
       <form className="settings-panel checkin-settings" onSubmit={saveCheckInSettings}>
         <div className="settings-panel-head checkin-settings-head">
           <div className="settings-title">
@@ -1084,6 +1375,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         <button className="ghost-btn" onClick={() => load(0)}>
           <Search size={17} />
           查询
+        </button>
+        <button className="ghost-btn" type="button" onClick={loadCheckInStats}>
+          <CheckCircle2 size={17} />
+          刷新统计
         </button>
         <button
           className="primary-btn"
@@ -1340,6 +1635,120 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="amount-stats-empty">暂无累计充值活动，点击新建活动开始配置。</div>
               )}
             </div>
+          </section>
+        </>
+      )}
+
+      {activeSection === 'rates' && (
+        <>
+          <form className="settings-panel group-rate-panel" onSubmit={saveGroupRateMonitor}>
+            <div className="settings-panel-head">
+              <div className="settings-title">
+                <Globe2 size={18} />
+                <span>Sub2API 分组倍率监控</span>
+              </div>
+              <div className="checkin-actions">
+                <button className="ghost-btn" type="button" onClick={refreshGroupRatesNow} disabled={groupRateRefreshing}>
+                  <CheckCircle2 size={17} />
+                  {groupRateRefreshing ? '刷新中...' : '立即刷新'}
+                </button>
+                <button className="ghost-btn" type="submit" disabled={groupRateSaving}>
+                  <CheckCircle2 size={17} />
+                  {groupRateSaving ? '保存中...' : '保存配置'}
+                </button>
+                {groupRateSaved && <span className="settings-saved">已保存</span>}
+              </div>
+            </div>
+
+            <div className="group-rate-controls">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={groupRateDraft.enabled}
+                  onChange={(event) => patchGroupRateDraft({ enabled: event.target.checked })}
+                />
+                启用定时拉取
+              </label>
+              <label>
+                刷新间隔秒数
+                <input
+                  type="number"
+                  min="60"
+                  max="86400"
+                  step="60"
+                  value={groupRateDraft.refreshIntervalSeconds}
+                  onChange={(event) => patchGroupRateDraft({ refreshIntervalSeconds: Number(event.target.value) })}
+                />
+              </label>
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => patchGroupRateDraft({ monitoredGroupIds: [] })}
+              >
+                监控全部分组
+              </button>
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => patchGroupRateDraft({ monitoredGroupIds: groupRateMonitor.groups.map((group) => group.groupId) })}
+                disabled={groupRateMonitor.groups.length === 0}
+              >
+                自定义监控
+              </button>
+            </div>
+
+            <div className="group-rate-table">
+              <div className="group-rate-row group-rate-head">
+                <span>分组</span>
+                <span>当前倍率</span>
+                <span>最后拉取</span>
+                <span>监控</span>
+                <span>公开</span>
+              </div>
+              {groupRateMonitor.groups.map((group) => {
+                const monitorAll = groupRateDraft.monitoredGroupIds.length === 0;
+                const monitored = monitorAll || groupRateDraft.monitoredGroupIds.includes(group.groupId);
+                const publicVisible = groupRateDraft.publicGroupIds.includes(group.groupId);
+                return (
+                  <div className="group-rate-row" key={group.groupId}>
+                    <div>
+                      <strong>{group.groupName}</strong>
+                      <small>{group.groupId}</small>
+                    </div>
+                    <span>{Number(group.rateMultiplier).toFixed(4)}</span>
+                    <span>{group.lastSeenAt || '-'}</span>
+                    <label className="toggle-row compact">
+                      <input
+                        type="checkbox"
+                        checked={monitored}
+                        disabled={monitorAll}
+                        onChange={(event) => toggleGroupRateId('monitoredGroupIds', group.groupId, event.target.checked)}
+                      />
+                      {monitorAll ? '全部' : '启用'}
+                    </label>
+                    <label className="toggle-row compact">
+                      <input
+                        type="checkbox"
+                        checked={publicVisible}
+                        onChange={(event) => toggleGroupRateId('publicGroupIds', group.groupId, event.target.checked)}
+                      />
+                      展示
+                    </label>
+                  </div>
+                );
+              })}
+              {!loading && groupRateMonitor.groups.length === 0 && (
+                <div className="amount-stats-empty">暂无分组快照，点击立即刷新后会从 Sub2API 拉取。</div>
+              )}
+            </div>
+          </form>
+
+          <section className="user-info-panel">
+            <div className="settings-title">
+              <CircleDollarSign size={18} />
+              <span>倍率变化折线图</span>
+            </div>
+            <RateLineChart series={groupRateMonitor.series} />
           </section>
         </>
       )}
@@ -2179,6 +2588,10 @@ function formatOptionalDate(value: unknown) {
   return typeof value === 'string' && value ? formatDateTime(value) : '-';
 }
 
+function formatPlatformName(value: string) {
+  return value ? value.replace(/[_-]+/g, ' ') : '-';
+}
+
 function formatToday() {
   return new Date().toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -2197,6 +2610,8 @@ function sectionTitle(section: DashboardSection) {
       return '网站收藏';
     case 'recharge':
       return '充值活动';
+    case 'rates':
+      return '倍率监控';
     case 'system':
       return '系统设置';
   }

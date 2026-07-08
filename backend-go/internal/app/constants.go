@@ -25,6 +25,8 @@ const (
 	sub2APIAuthModeKey       = "sub2api.auth_mode"
 	sub2APITimeoutKey        = "sub2api.timeout_seconds"
 	sub2APITokenExpiresAtKey = "sub2api.jwt_expires_at"
+
+	sub2APIGroupRateMonitorKey = "sub2api.group_rate_monitor"
 )
 
 const sub2APITokenRefreshBefore = 10 * time.Minute

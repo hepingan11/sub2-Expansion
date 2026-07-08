@@ -68,6 +68,18 @@ type CheckInResponse struct {
 	Message          string     `json:"message"`
 }
 
+type CheckInStatsResponse struct {
+	TodayAmount Amount                  `json:"todayAmount"`
+	TodayUsers  int64                   `json:"todayUsers"`
+	Daily       []DailyCheckInStatEntry `json:"daily"`
+}
+
+type DailyCheckInStatEntry struct {
+	SignDate LocalDate `json:"signDate"`
+	Amount   Amount    `json:"amount"`
+	Users    int64     `json:"users"`
+}
+
 type PrizeTier struct {
 	Amount      Amount `json:"amount"`
 	Probability Amount `json:"probability"`

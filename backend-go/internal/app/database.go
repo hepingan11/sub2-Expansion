@@ -161,6 +161,28 @@ func (app *App) migrate() error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_social_bindings_user_platform ON social_account_bindings (user_id, platform)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_social_bindings_platform_external ON social_account_bindings (platform, external_user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_social_bindings_user ON social_account_bindings (user_id)`,
+		`CREATE TABLE IF NOT EXISTS sub2api_group_rate_snapshots (
+			group_id VARCHAR(100) PRIMARY KEY,
+			group_name VARCHAR(200) NOT NULL,
+			rate_multiplier DECIMAL(18, 6) NOT NULL,
+			raw_json TEXT NOT NULL,
+			last_seen_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_sub2api_group_rate_snapshots_seen ON sub2api_group_rate_snapshots (last_seen_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS sub2api_group_rate_logs (
+			id BIGSERIAL PRIMARY KEY,
+			group_id VARCHAR(100) NOT NULL,
+			group_name VARCHAR(200) NOT NULL,
+			old_rate DECIMAL(18, 6) NOT NULL,
+			new_rate DECIMAL(18, 6) NOT NULL,
+			source VARCHAR(40) NOT NULL,
+			public_visible BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_sub2api_group_rate_logs_group_time ON sub2api_group_rate_logs (group_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_sub2api_group_rate_logs_public ON sub2api_group_rate_logs (public_visible, created_at)`,
 	}
 
 	for _, statement := range sqlStatements {

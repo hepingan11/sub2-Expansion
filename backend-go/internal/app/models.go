@@ -3,6 +3,7 @@ package app
 import (
 	"time"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -263,5 +264,60 @@ func (b *SocialAccountBinding) BeforeCreate(*gorm.DB) error {
 
 func (b *SocialAccountBinding) BeforeUpdate(*gorm.DB) error {
 	b.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
+type Sub2APIGroupRateSnapshot struct {
+	GroupID        string          `gorm:"primaryKey;column:group_id;size:100" json:"groupId"`
+	GroupName      string          `gorm:"column:group_name;size:200;not null" json:"groupName"`
+	RateMultiplier decimal.Decimal `gorm:"column:rate_multiplier;type:decimal(18,6);not null" json:"-"`
+	RawJSON        string          `gorm:"column:raw_json;type:text;not null" json:"rawJson"`
+	LastSeenAt     JSONTime        `gorm:"column:last_seen_at;not null" json:"lastSeenAt"`
+	CreatedAt      JSONTime        `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt      JSONTime        `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (Sub2APIGroupRateSnapshot) TableName() string {
+	return "sub2api_group_rate_snapshots"
+}
+
+func (s *Sub2APIGroupRateSnapshot) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if s.CreatedAt.Time.IsZero() {
+		s.CreatedAt = now
+	}
+	if s.UpdatedAt.Time.IsZero() {
+		s.UpdatedAt = now
+	}
+	if s.LastSeenAt.Time.IsZero() {
+		s.LastSeenAt = now
+	}
+	return nil
+}
+
+func (s *Sub2APIGroupRateSnapshot) BeforeUpdate(*gorm.DB) error {
+	s.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
+type Sub2APIGroupRateLog struct {
+	ID            uint64          `gorm:"primaryKey;column:id" json:"id"`
+	GroupID       string          `gorm:"column:group_id;size:100;not null;index:idx_sub2api_group_rate_logs_group_time" json:"groupId"`
+	GroupName     string          `gorm:"column:group_name;size:200;not null" json:"groupName"`
+	OldRate       decimal.Decimal `gorm:"column:old_rate;type:decimal(18,6);not null" json:"-"`
+	NewRate       decimal.Decimal `gorm:"column:new_rate;type:decimal(18,6);not null" json:"-"`
+	Source        string          `gorm:"column:source;size:40;not null" json:"source"`
+	PublicVisible bool            `gorm:"column:public_visible;not null;index:idx_sub2api_group_rate_logs_public" json:"publicVisible"`
+	CreatedAt     JSONTime        `gorm:"column:created_at;autoCreateTime;index:idx_sub2api_group_rate_logs_group_time" json:"createdAt"`
+}
+
+func (Sub2APIGroupRateLog) TableName() string {
+	return "sub2api_group_rate_logs"
+}
+
+func (l *Sub2APIGroupRateLog) BeforeCreate(*gorm.DB) error {
+	if l.CreatedAt.Time.IsZero() {
+		l.CreatedAt = JSONTime{Time: time.Now()}
+	}
 	return nil
 }

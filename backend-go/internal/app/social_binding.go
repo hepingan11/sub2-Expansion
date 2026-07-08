@@ -52,6 +52,17 @@ func (app *App) bindSocialAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+func (app *App) listSocialBindingsForUser(userID int64) ([]SocialAccountBinding, error) {
+	var bindings []SocialAccountBinding
+	if err := app.db.
+		Where("user_id = ?", userID).
+		Order("platform ASC, id ASC").
+		Find(&bindings).Error; err != nil {
+		return nil, err
+	}
+	return bindings, nil
+}
+
 func (app *App) bindSocialAccountForUser(userID int64, platform, externalUserID string) (SocialBindingResponse, error) {
 	var binding SocialAccountBinding
 	err := app.db.Where("user_id = ? AND platform = ?", userID, platform).First(&binding).Error

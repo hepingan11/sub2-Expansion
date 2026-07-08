@@ -19,6 +19,7 @@ func (app *App) router() *gin.Engine {
 		MaxAge:           time.Hour,
 	}))
 
+	router.GET("/api/public/sub2api/group-rate-series", app.getPublicSub2APIGroupRateSeries)
 	router.POST("/api/checkins", app.checkIn)
 
 	user := router.Group("/api/user")
@@ -49,8 +50,12 @@ func (app *App) router() *gin.Engine {
 	protected.PUT("/favorite-sites/:id", app.updateFavoriteSite)
 	protected.DELETE("/favorite-sites/:id", app.deleteFavoriteSite)
 	protected.GET("/stats", app.stats)
+	protected.GET("/check-in-stats", app.getCheckInStats)
 	protected.GET("/settings/check-in", app.getCheckInSettings)
 	protected.PUT("/settings/check-in", app.updateCheckInSettings)
+	protected.GET("/sub2api/group-rate-monitor", app.getSub2APIGroupRateMonitor)
+	protected.PUT("/sub2api/group-rate-monitor", app.updateSub2APIGroupRateMonitor)
+	protected.POST("/sub2api/group-rate-monitor/refresh", app.refreshSub2APIGroupRates)
 	protected.GET("/recharge-activities", app.listRechargeActivities)
 	protected.POST("/recharge-activities", app.createRechargeActivity)
 	protected.PUT("/recharge-activities/:id", app.updateRechargeActivity)

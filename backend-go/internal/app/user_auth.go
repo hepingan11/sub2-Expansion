@@ -160,7 +160,26 @@ func (app *App) getCurrentSub2APIUser(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
 		return
 	}
-	c.Data(http.StatusOK, "application/json; charset=utf-8", user)
+
+	snapshot, ok := sub2APIUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
+		return
+	}
+
+	var profile map[string]any
+	if err := json.Unmarshal(user, &profile); err != nil {
+		serverError(c, err)
+		return
+	}
+
+	bindings, err := app.listSocialBindingsForUser(snapshot.ID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	profile["socialBindings"] = bindings
+	c.JSON(http.StatusOK, profile)
 }
 
 func (app *App) sub2APIUserLogin(ctx context.Context, req UserLoginRequest) (Sub2APIUserLoginData, error) {

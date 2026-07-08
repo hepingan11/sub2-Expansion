@@ -19,6 +19,7 @@ func Run() {
 		log.Fatalf("migrate database: %v", err)
 	}
 	app.startSub2APITokenRefresher(context.Background())
+	app.startSub2APIGroupRateMonitor(context.Background())
 
 	router := app.router()
 	log.Printf("Go backend listening on :%s", cfg.Port)
