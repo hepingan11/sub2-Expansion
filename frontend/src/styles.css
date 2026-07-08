@@ -32,6 +32,137 @@ button {
   cursor: pointer;
 }
 
+.el-message-stack {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 1200;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.el-message-toast {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(29, 37, 35, 0.16);
+  pointer-events: auto;
+}
+
+.el-message-toast.is-error {
+  border-color: rgba(163, 58, 52, 0.32);
+  background: #fff8f7;
+}
+
+.el-message-toast.is-success {
+  border-color: rgba(22, 115, 74, 0.32);
+  background: #f7fff9;
+}
+
+.el-message-toast.is-info {
+  border-color: rgba(39, 92, 146, 0.28);
+  background: #f7fbff;
+}
+
+.el-message-icon {
+  display: inline-grid;
+  place-items: center;
+  margin-top: 1px;
+}
+
+.el-message-toast.is-error .el-message-icon {
+  color: var(--red);
+}
+
+.el-message-toast.is-success .el-message-icon {
+  color: var(--green);
+}
+
+.el-message-toast.is-info .el-message-icon {
+  color: var(--blue);
+}
+
+.el-message-toast strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.el-message-toast p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.el-message-close {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.el-message-close:hover {
+  color: var(--ink);
+  background: rgba(29, 37, 35, 0.06);
+}
+
+.el-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(29, 37, 35, 0.42);
+}
+
+.el-dialog {
+  width: min(420px, 100%);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.28);
+}
+
+.el-dialog-head,
+.el-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.el-dialog-head strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.el-dialog p {
+  margin: 18px 0;
+  color: var(--muted);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.el-dialog-actions {
+  justify-content: flex-end;
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;

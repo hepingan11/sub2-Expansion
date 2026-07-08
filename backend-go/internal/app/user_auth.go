@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -307,7 +308,11 @@ func respondSub2APIError(c *gin.Context, err error) {
 		if status <= 0 {
 			status = http.StatusBadGateway
 		}
-		c.JSON(status, APIError{Message: upstreamErr.message})
+		if status >= http.StatusInternalServerError {
+			log.Printf("Sub2API upstream error: status=%d message=%s", upstreamErr.statusCode, upstreamErr.message)
+			status = http.StatusBadGateway
+		}
+		c.JSON(status, APIError{Message: "Sub2API 调用失败：" + upstreamErr.message})
 		return
 	}
 	serverError(c, err)

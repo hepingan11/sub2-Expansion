@@ -84,6 +84,11 @@ func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *
 			conflict(c, err.Error())
 			return
 		}
+		var upstreamErr upstreamAPIError
+		if errors.As(err, &upstreamErr) {
+			respondSub2APIError(c, err)
+			return
+		}
 		serverError(c, err)
 		return
 	}
@@ -92,12 +97,12 @@ func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *
 
 func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInResponse, bool, error) {
 	var existingRecord CheckInRecord
-	err := app.db.Where("user_id = ? AND sign_date = ?", userID, today).First(&existingRecord).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return CheckInResponse{}, false, nil
+	tx := app.db.Where("user_id = ? AND sign_date = ?", userID, today).Limit(1).Find(&existingRecord)
+	if tx.Error != nil {
+		return CheckInResponse{}, false, tx.Error
 	}
-	if err != nil {
-		return CheckInResponse{}, false, err
+	if tx.RowsAffected == 0 {
+		return CheckInResponse{}, false, nil
 	}
 
 	var code RedeemCode
@@ -165,14 +170,13 @@ func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate) error {
 		return businessConflict("今日签到名额已满")
 	}
 
-	var limit DailyCheckInLimit
+	limit := DailyCheckInLimit{SignDate: today, CheckedCount: 0}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&limit).Error; err != nil {
+		return err
+	}
+
 	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("sign_date = ?", today).First(&limit).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		limit = DailyCheckInLimit{SignDate: today, CheckedCount: 0}
-		if err := tx.Create(&limit).Error; err != nil {
-			return err
-		}
-	} else if err != nil {
+	if err != nil {
 		return err
 	}
 	if limit.CheckedCount >= dailyMaxUsers {
