@@ -1,6 +1,6 @@
 ---
 name: sub2api-admin
-description: Manage Sub2API admin APIs from Codex through a bundled CLI and reference guide. Use when the user mentions Sub2API admin API, Admin API Key, account management, redeem codes, recharge codes, invitation codes, groups, proxies, error passthrough rules, TLS fingerprint profiles, imports, exports, batch account updates, CRS sync, or asks an agent to inspect or change Sub2API backend state.
+description: Manage Sub2API admin and Sub2 Expansion check-in APIs from Codex through a bundled CLI and reference guide. Use when the user mentions Sub2API admin API, Admin API Key, account management, redeem codes, recharge codes, invitation codes, groups, proxies, error passthrough rules, TLS fingerprint profiles, imports, exports, batch account updates, CRS sync, social account binding, direct check-in, social check-in, or asks an agent to inspect or change Sub2API/Sub2 Expansion backend state.
 ---
 
 # Sub2API Admin
@@ -9,6 +9,7 @@ Use the bundled CLI instead of ad hoc `curl`. Run examples from this skill direc
 
 ```bash
 export SUB2API_BASE_URL='https://your-sub2api-host'
+export SUB2_EXPANSION_BASE_URL='https://your-sub2-expansion-host'
 export SUB2API_ADMIN_API_KEY='admin-...'
 node scripts/sub2api-admin.js accounts list --page-size 20
 ```
@@ -44,6 +45,7 @@ node scripts/sub2api-admin.js proxies all
 node scripts/sub2api-admin.js redeem-codes list --page-size 20
 node scripts/sub2api-admin.js redeem-codes generate --json '{"count":1,"type":"balance","value":10}' --idempotency-key redeem-123
 node scripts/sub2api-admin.js redeem-codes create-and-redeem --json '{"code":"order_123","type":"balance","value":10,"user_id":123}' --idempotency-key order-123
+node scripts/sub2api-admin.js checkins social --platform telegram --user-id 12345
 node scripts/sub2api-admin.js error-rules list
 node scripts/sub2api-admin.js tls-profiles list
 node scripts/sub2api-admin.js api GET /admin/settings/admin-api-key

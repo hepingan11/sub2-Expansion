@@ -72,6 +72,15 @@ type CheckInResponse struct {
 	Message          string     `json:"message"`
 }
 
+type SocialBindingRequiredResponse struct {
+	Message        string `json:"message"`
+	Code           string `json:"code"`
+	Platform       string `json:"platform"`
+	UserID         string `json:"userId"`
+	ExternalUserID string `json:"externalUserId"`
+	BindingURL     string `json:"bindingUrl"`
+}
+
 type CheckInStatsResponse struct {
 	TodayAmount Amount                  `json:"todayAmount"`
 	TodayUsers  int64                   `json:"todayUsers"`

@@ -22,6 +22,7 @@ func loadConfig() Config {
 		AuthSecret:           env("AUTH_SECRET", "change-this-secret-to-a-long-random-string"),
 		AuthTokenTTLHours:    envInt64("AUTH_TOKEN_TTL_HOURS", 12),
 		CorsAllowedOrigins:   splitCSV(env("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://8.137.103.102:5173")),
+		FrontendPublicURL:    strings.TrimRight(env("FRONTEND_PUBLIC_URL", ""), "/"),
 		CheckInDailyMaxUsers: envInt("CHECK_IN_DAILY_MAX_USERS", 20),
 		Sub2APIBaseURL:       strings.TrimRight(env("SUB2API_BASE_URL", ""), "/"),
 		Sub2APIAdminAPIKey:   env("SUB2API_ADMIN_API_KEY", ""),

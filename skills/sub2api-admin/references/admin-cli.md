@@ -5,6 +5,7 @@
 ```bash
 export SUB2API_BASE_URL='https://your-sub2api-host'
 export SUB2API_ADMIN_API_KEY='<admin api key>'
+export SUB2_EXPANSION_BASE_URL='https://your-sub2-expansion-host'
 # 或者，未配置管理员 API Key 时使用管理员账号密码登录：
 # export SUB2API_ADMIN_EMAIL='admin@example.com'
 # export SUB2API_ADMIN_PASSWORD='<admin password>'
@@ -130,6 +131,17 @@ node scripts/sub2api-admin.js groups all
 node scripts/sub2api-admin.js proxies all
 ```
 
+## Check-ins
+
+These public Sub2 Expansion endpoints use `SUB2_EXPANSION_BASE_URL`; if it is not set, the CLI falls back to `SUB2API_BASE_URL`. They do not use admin authentication.
+
+```bash
+node scripts/sub2api-admin.js checkins direct --user-id 123
+node scripts/sub2api-admin.js checkins social --platform telegram --user-id 12345
+```
+
+For social check-in, `--user-id` is the external social-platform user ID. If the social account has not been bound to a Sub2API user, the backend returns `code: "SOCIAL_ACCOUNT_NOT_BOUND"` plus `bindingUrl`. Show that URL to the user so they can log in and bind the social account before retrying check-in.
+
 ## Settings
 
 管理员 API Key 管理。完整 key 只在生成/重新生成时返回一次，避免打印到聊天记录。
@@ -220,8 +232,10 @@ node scripts/sub2api-admin.js api POST /admin/accounts/bulk-update \
   --json '{"account_ids":[40],"concurrency":10}'
 ```
 
-## Confirmed Admin Endpoints
+## Confirmed Endpoints
 
+- `POST /api/checkins`
+- `POST /api/checkins/social`
 - `GET /api/v1/admin/accounts`
 - `GET /api/v1/admin/accounts/:id`
 - `POST /api/v1/admin/accounts`

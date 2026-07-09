@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -54,7 +55,14 @@ func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
 	var binding SocialAccountBinding
 	if err := app.db.Where("platform = ? AND external_user_id = ?", platform, externalUserID).First(&binding).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, APIError{Message: "social account binding not found"})
+			c.JSON(http.StatusNotFound, SocialBindingRequiredResponse{
+				Message:        "社交平台账号未绑定，请先登录并绑定账号",
+				Code:           "SOCIAL_ACCOUNT_NOT_BOUND",
+				Platform:       platform,
+				UserID:         externalUserID,
+				ExternalUserID: externalUserID,
+				BindingURL:     app.socialBindingURL(c, platform, externalUserID),
+			})
 			return
 		}
 		serverError(c, err)
@@ -63,6 +71,59 @@ func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
 
 	canonicalUserID := strconv.FormatInt(binding.UserID, 10)
 	app.respondCheckIn(c, canonicalUserID, &binding.UserID, checkInMethodSocial, platform)
+}
+
+func (app *App) socialBindingURL(c *gin.Context, platform, externalUserID string) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(app.cfg.FrontendPublicURL), "/")
+	if baseURL == "" {
+		baseURL = requestPublicOrigin(c)
+	}
+	return buildSocialBindingURL(baseURL, platform, externalUserID)
+}
+
+func buildSocialBindingURL(baseURL, platform, externalUserID string) string {
+	values := url.Values{}
+	values.Set("platform", platform)
+	values.Set("userid", externalUserID)
+	prefix := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if prefix == "" {
+		return "/?" + values.Encode()
+	}
+	return prefix + "/?" + values.Encode()
+}
+
+func requestPublicOrigin(c *gin.Context) string {
+	host := firstHeaderValue(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = firstHeaderValue(c.Request.Host)
+	}
+	if !isValidPublicHost(host) {
+		return ""
+	}
+	proto := strings.ToLower(firstHeaderValue(c.GetHeader("X-Forwarded-Proto")))
+	if proto != "http" && proto != "https" {
+		if c.Request.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+	return proto + "://" + host
+}
+
+func firstHeaderValue(value string) string {
+	value = strings.TrimSpace(value)
+	if index := strings.Index(value, ","); index >= 0 {
+		value = value[:index]
+	}
+	return strings.TrimSpace(value)
+}
+
+func isValidPublicHost(host string) bool {
+	if host == "" || len(host) > 255 {
+		return false
+	}
+	return !strings.ContainsAny(host, " \t\r\n/\\")
 }
 
 func (app *App) getUserCheckInStatus(c *gin.Context) {

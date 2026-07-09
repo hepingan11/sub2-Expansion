@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const BASE_URL = (process.env.SUB2API_BASE_URL || "").replace(/\/$/, "");
+const EXPANSION_BASE_URL = (process.env.SUB2_EXPANSION_BASE_URL || process.env.SUB2API_EXPANSION_BASE_URL || process.env.SUB2API_BASE_URL || "").replace(/\/$/, "");
 const ADMIN_API_KEY = process.env.SUB2API_ADMIN_API_KEY || "";
 const ADMIN_EMAIL = process.env.SUB2API_ADMIN_EMAIL || process.env.SUB2API_ADMIN_USERNAME || "";
 const ADMIN_PASSWORD = process.env.SUB2API_ADMIN_PASSWORD || "";
@@ -58,6 +59,8 @@ function usage() {
   sub2api-admin.js redeem-codes batch-delete --ids 1,2
   sub2api-admin.js redeem-codes expire <id>
   sub2api-admin.js redeem-codes stats
+  sub2api-admin.js checkins direct --user-id USER_ID
+  sub2api-admin.js checkins social --platform PLATFORM --user-id EXTERNAL_USER_ID
   sub2api-admin.js settings admin-api-key status|regenerate|delete
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
@@ -178,6 +181,30 @@ async function apiRawRequest(method, pathname, body, extraHeaders = {}) {
     throw new Error(`${method} ${pathname} failed: ${detail}`);
   }
   return text;
+}
+
+async function publicRequest(method, pathname, body) {
+  if (!EXPANSION_BASE_URL) throw new Error("Missing SUB2_EXPANSION_BASE_URL or SUB2API_BASE_URL");
+  const headers = { Accept: "application/json" };
+  const options = { method, headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${EXPANSION_BASE_URL}${pathname}`, options);
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+  const socialBindingRequired = res.status === 404 && data && data.code === "SOCIAL_ACCOUNT_NOT_BOUND";
+  if ((!res.ok && !socialBindingRequired) || (data && data.code !== undefined && data.code !== 0 && data.code !== "0" && data.code !== "SOCIAL_ACCOUNT_NOT_BOUND")) {
+    const detail = data.message || data.code || res.statusText;
+    throw new Error(`${method} ${pathname} failed: ${detail}`);
+  }
+  return data.data === undefined ? data : data.data;
 }
 
 function encodeQuery(params) {
@@ -704,6 +731,24 @@ async function commandRedeemCodes(args) {
   throw new Error(`unknown redeem-codes subcommand: ${sub || "(missing)"}`);
 }
 
+async function commandCheckins(args) {
+  const sub = args.positional[1];
+  const userID = args.flags["user-id"] || args.flags.userId || args.flags.userid;
+  if (sub === "direct") {
+    if (!userID) throw new Error("checkins direct requires --user-id");
+    printJson(await publicRequest("POST", "/api/checkins", { userId: userID }));
+    return;
+  }
+  if (sub === "social") {
+    const platform = args.flags.platform || args.flags["platform-type"];
+    if (!platform) throw new Error("checkins social requires --platform");
+    if (!userID) throw new Error("checkins social requires --user-id");
+    printJson(await publicRequest("POST", "/api/checkins/social", { platform, userId: userID }));
+    return;
+  }
+  throw new Error(`unknown checkins subcommand: ${sub || "(missing)"}`);
+}
+
 async function commandCrudResource(args, name, basePath, options = {}) {
   const sub = args.positional[1];
   const id = args.positional[2];
@@ -789,6 +834,10 @@ async function main() {
   }
   if (root === "redeem-codes") {
     await commandRedeemCodes(args);
+    return;
+  }
+  if (root === "checkins") {
+    await commandCheckins(args);
     return;
   }
   if (root === "settings") {

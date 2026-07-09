@@ -17,6 +17,7 @@ type Config struct {
 	AuthSecret           string
 	AuthTokenTTLHours    int64
 	CorsAllowedOrigins   []string
+	FrontendPublicURL    string
 	CheckInDailyMaxUsers int
 	Sub2APIBaseURL       string
 	Sub2APIAdminAPIKey   string

@@ -1,4 +1,4 @@
 interface:
   display_name: "Sub2API Admin"
-  short_description: "Manage Sub2API admin APIs from Codex"
-  default_prompt: "Use $sub2api-admin to list recent redeem codes and check Sub2API admin connectivity."
+  short_description: "Manage Sub2API admin and check-in APIs from Codex"
+  default_prompt: "Use $sub2api-admin to test social check-in and show the binding URL when the social account is not bound."
