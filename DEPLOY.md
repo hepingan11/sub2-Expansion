@@ -8,6 +8,16 @@
 
 ## 一条命令启动
 
+如果服务器已经安装好 Docker 和 Docker Compose v2，可以直接执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/sub2-Expansion/main/scripts/install.sh | sh
+```
+
+脚本会拉取 GitHub 仓库、首次生成 `.env`，并执行 `docker compose up -d --build`。首次生成的后台密码会打印在终端里。
+
+也可以手动进入已拉取的项目目录启动：
+
 ```bash
 docker compose up -d --build
 ```
@@ -18,11 +28,13 @@ docker compose up -d --build
 http://your-server-ip:6779/
 ```
 
-默认后台账号：
+如果直接使用 compose 默认配置，后台账号为：
 
 ```text
 admin / admin123
 ```
+
+如果使用上面的一键安装脚本，后台密码会随机生成，请以脚本终端输出为准。
 
 ## 生产配置
 
