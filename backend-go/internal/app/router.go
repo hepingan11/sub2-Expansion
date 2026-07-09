@@ -19,8 +19,13 @@ func (app *App) router() *gin.Engine {
 		MaxAge:           time.Hour,
 	}))
 
+	router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
 	router.GET("/api/public/sub2api/group-rate-series", app.getPublicSub2APIGroupRateSeries)
 	router.POST("/api/checkins", app.checkIn)
+	router.POST("/api/checkins/social", app.socialCheckIn)
 
 	user := router.Group("/api/user")
 	user.POST("/login", app.userLogin)
@@ -56,10 +61,16 @@ func (app *App) router() *gin.Engine {
 	protected.GET("/sub2api/group-rate-monitor", app.getSub2APIGroupRateMonitor)
 	protected.PUT("/sub2api/group-rate-monitor", app.updateSub2APIGroupRateMonitor)
 	protected.POST("/sub2api/group-rate-monitor/refresh", app.refreshSub2APIGroupRates)
+	protected.PUT("/sub2api/group-rate-monitor/groups/:groupId/rate", app.updateSub2APIGroupRate)
+	protected.GET("/sub2api/group-rate-monitor/groups/:groupId/logs", app.listSub2APIGroupRateLogsForGroup)
+	protected.POST("/sub2api/group-rate-monitor/groups/:groupId/logs", app.createSub2APIGroupRateLog)
+	protected.PUT("/sub2api/group-rate-monitor/logs/:id", app.updateSub2APIGroupRateLog)
+	protected.DELETE("/sub2api/group-rate-monitor/logs/:id", app.deleteSub2APIGroupRateLog)
 	protected.GET("/recharge-activities", app.listRechargeActivities)
 	protected.POST("/recharge-activities", app.createRechargeActivity)
 	protected.PUT("/recharge-activities/:id", app.updateRechargeActivity)
 	protected.DELETE("/recharge-activities/:id", app.deleteRechargeActivity)
+	protected.GET("/recharge-reward-claims", app.listAdminRechargeRewardClaims)
 
 	return router
 }

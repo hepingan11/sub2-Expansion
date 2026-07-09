@@ -28,7 +28,7 @@
 
 先准备 MySQL，然后设置环境变量或直接使用默认值。默认连接信息是 `root/root`，数据库名是 `redeem_code_system`：
 
-后端地址：`http://localhost:8080`。
+后端地址：`http://localhost:8625`。
 
 如果你的本机 MySQL 不是 `root/root`，请把 `DB_USERNAME` 和 `DB_PASSWORD` 改成真实账号密码。后端启动失败时优先看 `Access denied for user`，这通常就是数据库账号密码不匹配。
 
@@ -55,16 +55,16 @@ npm run dev
 cd frontend
 npm install
 npm run build
-$env:VITE_PROXY_TARGET="http://127.0.0.1:8080"
+$env:VITE_PROXY_TARGET="http://127.0.0.1:8625"
 npm run preview -- --host 0.0.0.0 --port 5173
 ```
 
-这样浏览器访问 `http://8.137.103.102:5173/api/admin/login` 时，Vite 会把 `/api` 请求转发到后端 `8080`，不会落到前端静态服务导致 404。
+这样浏览器访问 `http://8.137.103.102:5173/api/admin/login` 时，Vite 会把 `/api` 请求转发到后端 `8625`，不会落到前端静态服务导致 404。
 
 如果前端不走代理，而是直接请求后端，也可以在构建前设置：
 
 ```powershell
-$env:VITE_API_BASE="http://8.137.103.102:8080"
+$env:VITE_API_BASE="http://8.137.103.102:8625"
 npm run build
 ```
 

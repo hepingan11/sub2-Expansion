@@ -13,7 +13,7 @@ import (
 
 func loadConfig() Config {
 	return Config{
-		Port:                 env("SERVER_PORT", env("PORT", "8080")),
+		Port:                 env("SERVER_PORT", env("PORT", "8625")),
 		DBURL:                env("DB_URL", "postgres://postgres:postgres@localhost:5432/redeem_code_system?sslmode=disable&TimeZone=Asia/Shanghai"),
 		DBUsername:           env("DB_USERNAME", "postgres"),
 		DBPassword:           env("DB_PASSWORD", "postgres"),

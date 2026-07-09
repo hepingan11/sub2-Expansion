@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -141,6 +142,70 @@ func (app *App) deleteRechargeActivity(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (app *App) listAdminRechargeRewardClaims(c *gin.Context) {
+	page := max(queryInt(c, "page", 0), 0)
+	size := min(max(queryInt(c, "size", 10), 1), 100)
+	query := app.db.Model(&RechargeRewardClaim{})
+
+	if status := strings.TrimSpace(c.Query("status")); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if userIDText := strings.TrimSpace(c.Query("userId")); userIDText != "" {
+		userID, err := strconv.ParseInt(userIDText, 10, 64)
+		if err != nil || userID <= 0 {
+			badRequest(c, "invalid userId")
+			return
+		}
+		query = query.Where("user_id = ?", userID)
+	}
+	if activityIDText := strings.TrimSpace(c.Query("activityId")); activityIDText != "" {
+		activityID, err := strconv.ParseUint(activityIDText, 10, 64)
+		if err != nil || activityID == 0 {
+			badRequest(c, "invalid activityId")
+			return
+		}
+		query = query.Where("activity_id = ?", activityID)
+	}
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		like := "%" + keyword + "%"
+		if userID, err := strconv.ParseInt(keyword, 10, 64); err == nil && userID > 0 {
+			query = query.Where("user_id = ? OR redeem_code LIKE ?", userID, like)
+		} else {
+			query = query.Where("redeem_code LIKE ?", like)
+		}
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	var claims []RechargeRewardClaim
+	if err := query.Order("updated_at DESC, id DESC").Limit(size).Offset(page * size).Find(&claims).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	responses, err := app.rechargeRewardClaimResponses(claims)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+
+	totalPages := 0
+	if total > 0 {
+		totalPages = int((total + int64(size) - 1) / int64(size))
+	}
+	c.JSON(http.StatusOK, PageResponse[AdminRechargeRewardClaimResponse]{
+		Content:       responses,
+		TotalElements: total,
+		TotalPages:    totalPages,
+		Number:        page,
+		Size:          size,
+	})
 }
 
 func (app *App) listUserRechargeRewards(c *gin.Context) {
@@ -454,9 +519,96 @@ func (app *App) createAndRedeemSub2APIBalance(ctx context.Context, userID int64,
 		if message == "" {
 			message = resp.Status
 		}
+		if resp.StatusCode >= http.StatusInternalServerError {
+			log.Printf("Sub2API create-and-redeem failed: status=%d user_id=%d reward=%s code=%s message=%q body=%q",
+				resp.StatusCode,
+				userID,
+				reward.StringFixed(2),
+				code,
+				message,
+				truncateLogText(string(respBody), 1024),
+			)
+		}
 		return upstreamAPIError{statusCode: resp.StatusCode, message: message}
 	}
 	return nil
+}
+
+func (app *App) addSub2APIUserBalance(ctx context.Context, userID int64, reward Amount, idempotencyKey string, notes string) error {
+	cfg, err := app.effectiveSub2APIConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.BaseURL == "" {
+		return businessConflict("Sub2API is not configured: set SUB2API_BASE_URL")
+	}
+	authName, authValue, err := app.sub2APIAuthHeader(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"balance":   reward.InexactFloat64(),
+		"operation": "add",
+		"notes":     notes,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	endpoint := fmt.Sprintf("%s/api/v1/admin/users/%d/balance", cfg.BaseURL, userID)
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	req.Header.Set(authName, authValue)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("Sub2API balance update failed: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return err
+	}
+	var envelope sub2APIEnvelope
+	if err := json.Unmarshal(respBody, &envelope); err != nil {
+		return fmt.Errorf("parse Sub2API balance update response failed: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || envelope.Code != 0 {
+		message := strings.TrimSpace(envelope.Message)
+		if message == "" {
+			message = resp.Status
+		}
+		if resp.StatusCode >= http.StatusInternalServerError {
+			log.Printf("Sub2API balance update failed: status=%d user_id=%d reward=%s idempotency_key=%s message=%q body=%q",
+				resp.StatusCode,
+				userID,
+				reward.StringFixed(2),
+				idempotencyKey,
+				message,
+				truncateLogText(string(respBody), 1024),
+			)
+		}
+		return upstreamAPIError{statusCode: resp.StatusCode, message: message}
+	}
+	return nil
+}
+
+func truncateLogText(value string, limit int) string {
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "...(truncated)"
 }
 
 func normalizeRechargeActivityRequest(req RechargeActivityRequest) (RechargeActivity, []RechargeRewardTier, error) {
@@ -572,6 +724,73 @@ func userRechargeTierResponse(tier RechargeRewardTier, total Amount, claim Recha
 		resp.ClaimedAt = claim.UpdatedAt
 	}
 	return resp
+}
+
+func (app *App) rechargeRewardClaimResponses(claims []RechargeRewardClaim) ([]AdminRechargeRewardClaimResponse, error) {
+	activityIDs := make([]uint64, 0, len(claims))
+	tierIDs := make([]uint64, 0, len(claims))
+	activitySeen := map[uint64]bool{}
+	tierSeen := map[uint64]bool{}
+	for _, claim := range claims {
+		if !activitySeen[claim.ActivityID] {
+			activityIDs = append(activityIDs, claim.ActivityID)
+			activitySeen[claim.ActivityID] = true
+		}
+		if !tierSeen[claim.TierID] {
+			tierIDs = append(tierIDs, claim.TierID)
+			tierSeen[claim.TierID] = true
+		}
+	}
+
+	activitiesByID := map[uint64]RechargeActivity{}
+	if len(activityIDs) > 0 {
+		var activities []RechargeActivity
+		if err := app.db.Where("id IN ?", activityIDs).Find(&activities).Error; err != nil {
+			return nil, err
+		}
+		for _, activity := range activities {
+			activitiesByID[activity.ID] = activity
+		}
+	}
+
+	tiersByID := map[uint64]RechargeRewardTier{}
+	if len(tierIDs) > 0 {
+		var tiers []RechargeRewardTier
+		if err := app.db.Where("id IN ?", tierIDs).Find(&tiers).Error; err != nil {
+			return nil, err
+		}
+		for _, tier := range tiers {
+			tiersByID[tier.ID] = tier
+		}
+	}
+
+	result := make([]AdminRechargeRewardClaimResponse, 0, len(claims))
+	for _, claim := range claims {
+		activityName := ""
+		if activity, ok := activitiesByID[claim.ActivityID]; ok {
+			activityName = activity.Name
+		}
+		tierSort := 0
+		if tier, ok := tiersByID[claim.TierID]; ok {
+			tierSort = tier.SortOrder
+		}
+		result = append(result, AdminRechargeRewardClaimResponse{
+			ID:              claim.ID,
+			ActivityID:      claim.ActivityID,
+			ActivityName:    activityName,
+			TierID:          claim.TierID,
+			TierSort:        tierSort,
+			UserID:          claim.UserID,
+			ThresholdAmount: claim.ThresholdAmount,
+			RewardAmount:    claim.RewardAmount,
+			Status:          claim.Status,
+			RedeemCode:      claim.RedeemCode,
+			ErrorMessage:    claim.ErrorMessage,
+			CreatedAt:       claim.CreatedAt,
+			UpdatedAt:       claim.UpdatedAt,
+		})
+	}
+	return result, nil
 }
 
 func rechargeActivityAvailable(activity RechargeActivity, now time.Time) bool {

@@ -22,7 +22,7 @@ go mod tidy
 go run .
 ```
 
-默认监听 `8080`。推荐复制 `.env.example` 为 `.env`，再按本机 PostgreSQL 信息修改：
+默认监听 `8625`。推荐复制 `.env.example` 为 `.env`，再按本机 PostgreSQL 信息修改：
 
 ```powershell
 cd backend-go
@@ -35,7 +35,7 @@ PostgreSQL 需要先创建数据库，例如 `createdb redeem_code_system`，或
 `.env` 中可以配置：
 
 ```dotenv
-SERVER_PORT=8080
+SERVER_PORT=8625
 DB_URL=postgres://postgres:postgres@localhost:5432/redeem_code_system?sslmode=disable&TimeZone=Asia/Shanghai
 DB_USERNAME=postgres
 DB_PASSWORD=postgres
@@ -57,7 +57,7 @@ SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS=300
 系统环境变量优先级高于 `.env`。如果需要临时覆盖，也可以直接设置环境变量：
 
 ```powershell
-$env:SERVER_PORT="8080"
+$env:SERVER_PORT="8625"
 $env:DB_URL="postgres://postgres:postgres@localhost:5432/redeem_code_system?sslmode=disable&TimeZone=Asia/Shanghai"
 $env:DB_USERNAME="postgres"
 $env:DB_PASSWORD="postgres"

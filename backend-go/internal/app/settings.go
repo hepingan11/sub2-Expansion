@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm/clause"
 )
 
@@ -34,7 +35,25 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		badRequest(c, "每日签到上限不能小于 0")
 		return
 	}
-	tiers, err := normalizePrizeTiers(req.PrizeTiers)
+	dailyLimitMode := normalizeDailyLimitMode(req.DailyLimitMode)
+	if req.DirectDailyMaxUsers < 0 || req.SocialDailyMaxUsers < 0 {
+		badRequest(c, "daily check-in limits must be greater than or equal to 0")
+		return
+	}
+	directInput := req.DirectPrizeTiers
+	if len(directInput) == 0 {
+		directInput = req.PrizeTiers
+	}
+	directTiers, err := normalizePrizeTiers(directInput)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	socialInput := req.SocialPrizeTiers
+	if len(socialInput) == 0 {
+		socialInput = directTiers
+	}
+	socialTiers, err := normalizePrizeTiers(socialInput)
 	if err != nil {
 		badRequest(c, err.Error())
 		return
@@ -43,12 +62,40 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
-	encoded, err := json.Marshal(tiers)
-	if err != nil {
+	if err := app.saveSetting(dailyLimitModeKey, dailyLimitMode); err != nil {
 		serverError(c, err)
 		return
 	}
-	if err := app.saveSetting(prizeTiersKey, string(encoded)); err != nil {
+	if err := app.saveSetting(directDailyMaxUsersKey, strconv.Itoa(req.DirectDailyMaxUsers)); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := app.saveSetting(socialDailyMaxUsersKey, strconv.Itoa(req.SocialDailyMaxUsers)); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := app.savePrizeTiers(prizeTiersKey, directTiers); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := app.savePrizeTiers(socialPrizeTiersKey, socialTiers); err != nil {
+		serverError(c, err)
+		return
+	}
+	adminConfig := req.Admin
+	if strings.TrimSpace(adminConfig.Username) == "" && adminConfig.Password == "" {
+		currentAdmin, err := app.effectiveAdminConfig()
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		adminConfig.Username = currentAdmin.Username
+	}
+	if err := app.saveAdminConfig(adminConfig); err != nil {
+		if isBusinessConflict(err) {
+			conflict(c, err.Error())
+			return
+		}
 		serverError(c, err)
 		return
 	}
@@ -69,7 +116,27 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
-	tiers, err := app.getPrizeTiers()
+	dailyLimitMode, err := app.getDailyLimitMode()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	directDailyMaxUsers, err := app.getMethodDailyMaxUsers(directDailyMaxUsersKey, dailyMaxUsers)
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	socialDailyMaxUsers, err := app.getMethodDailyMaxUsers(socialDailyMaxUsersKey, dailyMaxUsers)
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	directTiers, err := app.getPrizeTiers(prizeTiersKey, defaultPrizeTiers)
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	socialTiers, err := app.getPrizeTiers(socialPrizeTiersKey, directTiers)
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	admin, err := app.effectiveAdminConfig()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
@@ -81,7 +148,57 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	sub2api.AdminPasswordSet = sub2api.AdminPassword != ""
 	sub2api.AdminAPIKey = ""
 	sub2api.AdminPassword = ""
-	return CheckInSettingsResponse{DailyMaxUsers: dailyMaxUsers, PrizeTiers: tiers, Sub2API: sub2api}, nil
+	admin.PasswordSet = admin.Password != ""
+	admin.Password = ""
+	return CheckInSettingsResponse{
+		DailyMaxUsers:       dailyMaxUsers,
+		DailyLimitMode:      dailyLimitMode,
+		DirectDailyMaxUsers: directDailyMaxUsers,
+		SocialDailyMaxUsers: socialDailyMaxUsers,
+		PrizeTiers:          directTiers,
+		DirectPrizeTiers:    directTiers,
+		SocialPrizeTiers:    socialTiers,
+		Admin:               admin,
+		Sub2API:             sub2api,
+	}, nil
+}
+
+func (app *App) effectiveAdminConfig() (AdminConfig, error) {
+	cfg := AdminConfig{
+		Username:    app.cfg.AdminUsername,
+		Password:    app.cfg.AdminPassword,
+		PasswordSet: strings.TrimSpace(app.cfg.AdminPassword) != "",
+	}
+	var err error
+	if cfg.Username, err = app.settingOrDefault(adminUsernameKey, cfg.Username); err != nil {
+		return AdminConfig{}, err
+	}
+	if cfg.Password, err = app.settingOrDefault(adminPasswordHashKey, cfg.Password); err != nil {
+		return AdminConfig{}, err
+	}
+	cfg.Username = strings.TrimSpace(cfg.Username)
+	cfg.PasswordSet = strings.TrimSpace(cfg.Password) != ""
+	return cfg, nil
+}
+
+func (app *App) saveAdminConfig(cfg AdminConfig) error {
+	username := strings.TrimSpace(cfg.Username)
+	if username == "" {
+		return businessConflict("admin username must not be blank")
+	}
+	if err := app.saveSetting(adminUsernameKey, username); err != nil {
+		return err
+	}
+	if cfg.Password != "" {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(cfg.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		if err := app.saveSetting(adminPasswordHashKey, string(hashed)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (app *App) effectiveSub2APIConfig() (Sub2APIConfig, error) {
@@ -203,27 +320,75 @@ func (app *App) getDailyMaxUsers() (int, error) {
 	return parsed, nil
 }
 
-func (app *App) getPrizeTiers() ([]PrizeTier, error) {
-	value, found, err := app.getSetting(prizeTiersKey)
+func (app *App) getDailyLimitMode() (string, error) {
+	value, found, err := app.getSetting(dailyLimitModeKey)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		mode := "shared"
+		return mode, app.saveSetting(dailyLimitModeKey, mode)
+	}
+	mode := normalizeDailyLimitMode(value)
+	if mode != strings.TrimSpace(value) {
+		return mode, app.saveSetting(dailyLimitModeKey, mode)
+	}
+	return mode, nil
+}
+
+func normalizeDailyLimitMode(value string) string {
+	switch strings.TrimSpace(value) {
+	case "separate":
+		return "separate"
+	default:
+		return "shared"
+	}
+}
+
+func (app *App) getMethodDailyMaxUsers(key string, fallback int) (int, error) {
+	value, found, err := app.getSetting(key)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return fallback, app.saveSetting(key, strconv.Itoa(fallback))
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback, app.saveSetting(key, strconv.Itoa(fallback))
+	}
+	return parsed, nil
+}
+
+func (app *App) getPrizeTiers(key string, fallback []PrizeTier) ([]PrizeTier, error) {
+	value, found, err := app.getSetting(key)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return defaultPrizeTiers, app.savePrizeTiers(defaultPrizeTiers)
+		return fallback, app.savePrizeTiers(key, fallback)
 	}
 	var tiers []PrizeTier
 	if err := json.Unmarshal([]byte(value), &tiers); err != nil {
-		return defaultPrizeTiers, app.savePrizeTiers(defaultPrizeTiers)
+		return fallback, app.savePrizeTiers(key, fallback)
 	}
 	normalized, err := normalizePrizeTiers(tiers)
 	if err != nil {
-		return defaultPrizeTiers, app.savePrizeTiers(defaultPrizeTiers)
+		return fallback, app.savePrizeTiers(key, fallback)
 	}
 	return normalized, nil
 }
 
-func (app *App) drawAmount() (Amount, error) {
-	tiers, err := app.getPrizeTiers()
+func (app *App) drawAmount(checkInMethod string) (Amount, error) {
+	key := prizeTiersKey
+	fallback := defaultPrizeTiers
+	if checkInMethod == checkInMethodSocial {
+		key = socialPrizeTiersKey
+		if directTiers, err := app.getPrizeTiers(prizeTiersKey, defaultPrizeTiers); err == nil {
+			fallback = directTiers
+		}
+	}
+	tiers, err := app.getPrizeTiers(key, fallback)
 	if err != nil {
 		return Amount{}, err
 	}
@@ -256,12 +421,12 @@ func secureInt(max int) (int, error) {
 	return int(value%uint64(max)) + 1, nil
 }
 
-func (app *App) savePrizeTiers(tiers []PrizeTier) error {
+func (app *App) savePrizeTiers(key string, tiers []PrizeTier) error {
 	encoded, err := json.Marshal(tiers)
 	if err != nil {
 		return err
 	}
-	return app.saveSetting(prizeTiersKey, string(encoded))
+	return app.saveSetting(key, string(encoded))
 }
 
 func (app *App) getSetting(key string) (string, bool, error) {

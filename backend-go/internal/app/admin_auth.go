@@ -22,7 +22,12 @@ func (app *App) login(c *gin.Context) {
 		badRequest(c, "username/password must not be blank")
 		return
 	}
-	if req.Username != app.cfg.AdminUsername || !app.matchesPassword(req.Password, app.cfg.AdminPassword) {
+	admin, err := app.effectiveAdminConfig()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if req.Username != admin.Username || !app.matchesPassword(req.Password, admin.Password) {
 		badRequest(c, "用户名或密码错误")
 		return
 	}

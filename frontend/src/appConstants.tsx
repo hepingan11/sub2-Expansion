@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import {
+  AdminSettings,
   CheckInStats,
   RedeemCodeStatus,
   Stats,
@@ -19,11 +20,17 @@ import {
   Sub2APISettings
 } from './api';
 
-export type DashboardSection = 'home' | 'checkins' | 'favorites' | 'recharge' | 'rates' | 'system';
+export type DashboardSection = 'checkins' | 'favorites' | 'recharge' | 'rates' | 'system';
 export type LoginMode = 'user' | 'admin';
 
 export const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
 export const emptyCheckInStats: CheckInStats = { todayAmount: 0, todayUsers: 0, daily: [] };
+
+export const emptyAdminSettings: AdminSettings = {
+  username: 'admin',
+  password: '',
+  passwordSet: false
+};
 
 export const emptySub2APISettings: Sub2APISettings = {
   baseUrl: '',
@@ -44,7 +51,8 @@ export const emptyGroupRateMonitor: Sub2APIGroupRateMonitor = {
     publicGroupIds: []
   },
   groups: [],
-  series: []
+  series: [],
+  logs: []
 };
 
 export const statusText: Record<RedeemCodeStatus, string> = {

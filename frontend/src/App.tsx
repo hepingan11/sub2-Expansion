@@ -9,7 +9,6 @@ import {
   ExternalLink,
   Globe2,
   GripVertical,
-  Home,
   KeyRound,
   LogOut,
   Pencil,
@@ -22,6 +21,7 @@ import {
   X
 } from 'lucide-react';
 import {
+  AdminSettings,
   batchImportCodes,
   CheckInStats,
   CheckInResult,
@@ -31,10 +31,12 @@ import {
   createCode,
   createFavoriteSite,
   createRechargeActivity,
+  createSub2APIGroupRateLog,
   claimRechargeReward,
   deleteCode,
   deleteFavoriteSite,
   deleteRechargeActivity,
+  deleteSub2APIGroupRateLog,
   fetchCheckInSettings,
   fetchCheckInStats,
   fetchCodes,
@@ -43,7 +45,9 @@ import {
   fetchFavoriteSites,
   fetchPublicSub2APIGroupRateSeries,
   fetchRechargeActivities,
+  fetchRechargeRewardClaims,
   fetchSub2APIGroupRateMonitor,
+  fetchSub2APIGroupRateLogs,
   fetchUserCheckInStatus,
   fetchUserRechargeRewards,
   fetchStats,
@@ -59,6 +63,8 @@ import {
   RechargeActivityPayload,
   Stats,
   Sub2APIGroupRateMonitor,
+  Sub2APIGroupRateGroup,
+  Sub2APIGroupRateLog,
   Sub2APIGroupRateMonitorSettings,
   Sub2APIGroupRateSeries,
   Sub2APISettings,
@@ -68,14 +74,17 @@ import {
   updateFavoriteSite,
   updateRechargeActivity,
   updateSub2APIGroupRateMonitor,
+  updateSub2APIGroupRateLog,
   refreshSub2APIGroupRates,
   UserRechargeRewards,
   userCheckIn,
   userLogin,
-  userLogin2FA
+  userLogin2FA,
+  AdminRechargeRewardClaim
 } from './api';
 import {
   DashboardSection,
+  emptyAdminSettings,
   emptyCheckInStats,
   emptyGroupRateMonitor,
   emptyStats,
@@ -122,7 +131,7 @@ export default function App() {
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginRoute />} />
         <Route path="/user" element={<UserRoute />} />
-        <Route path="/admin" element={<Navigate to="/admin/home" replace />} />
+        <Route path="/admin" element={<Navigate to="/admin/recharge" replace />} />
         <Route path="/admin/:section" element={<AdminRoute />} />
         <Route path="*" element={<RootRedirect />} />
       </Routes>
@@ -132,7 +141,7 @@ export default function App() {
 
 function RootRedirect() {
   if (getUserToken()) return <Navigate to="/user" replace />;
-  if (getToken()) return <Navigate to="/admin/home" replace />;
+  if (getToken()) return <Navigate to="/admin/recharge" replace />;
   return <Navigate to="/login" replace />;
 }
 
@@ -140,7 +149,7 @@ function LoginRoute() {
   const navigate = useNavigate();
   return (
     <UnifiedLogin
-      onAdminLogin={() => navigate('/admin/home', { replace: true })}
+      onAdminLogin={() => navigate('/admin/recharge', { replace: true })}
       onUserLogin={() => navigate('/user', { replace: true })}
     />
   );
@@ -161,7 +170,7 @@ function AdminRoute() {
     return <Navigate to="/login" replace />;
   }
   if (!isDashboardSection(section)) {
-    return <Navigate to="/admin/home" replace />;
+    return <Navigate to="/admin/recharge" replace />;
   }
   return <Dashboard section={section} onSectionChange={(nextSection) => navigate(`/admin/${nextSection}`)} onLogout={() => navigate('/login', { replace: true })} />;
 }
@@ -524,46 +533,39 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
                       100,
                       Math.max(0, (Number(tier.thresholdAmount) / rewardMaxThreshold) * 100)
                     );
+                    const markerEdge = markerLeft < 12 ? 'is-start' : markerLeft > 88 ? 'is-end' : '';
                     return (
-                      <span
-                        className={`reward-progress-marker ${
+                      <div
+                        className={`reward-progress-point ${markerEdge} ${
                           tier.claimed ? 'is-claimed' : tier.eligible ? 'is-ready' : ''
                         }`}
                         key={`${activity.id}-${tier.id}`}
                         style={{ left: `${markerLeft}%` }}
-                      />
+                        tabIndex={0}
+                        aria-label={`${activity.name} 满 ${Number(tier.thresholdAmount).toFixed(2)} 奖励 ${Number(tier.rewardAmount).toFixed(2)}`}
+                      >
+                        <span className="reward-progress-marker" />
+                        <div className="reward-progress-popover">
+                          <span className="reward-activity-name">{activity.name}</span>
+                          <span>满 {Number(tier.thresholdAmount).toFixed(2)}</span>
+                          <strong>奖励 {Number(tier.rewardAmount).toFixed(2)}</strong>
+                          {tier.claimed ? (
+                            <span className="reward-status claimed">已领取</span>
+                          ) : (
+                            <button
+                              className="ghost-btn"
+                              type="button"
+                              disabled={!tier.eligible || claimingTierId === tier.id}
+                              onClick={() => claim(activity.id, tier.id)}
+                            >
+                              {claimingTierId === tier.id ? '领取中...' : tier.eligible ? '领取' : '未达标'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
-
-              <div className="reward-progress-steps">
-                {rewardMilestones.map(({ activity, tier }) => (
-                  <div
-                    className={`reward-progress-step ${
-                      tier.claimed ? 'is-claimed' : tier.eligible ? 'is-ready' : ''
-                    }`}
-                    key={`${activity.id}-${tier.id}`}
-                  >
-                    <div>
-                      <span className="reward-activity-name">{activity.name}</span>
-                      <span>满 {Number(tier.thresholdAmount).toFixed(2)}</span>
-                      <strong>奖励 {Number(tier.rewardAmount).toFixed(2)}</strong>
-                    </div>
-                    {tier.claimed ? (
-                      <span className="reward-status claimed">已领取</span>
-                    ) : (
-                      <button
-                        className="ghost-btn"
-                        type="button"
-                        disabled={!tier.eligible || claimingTierId === tier.id}
-                        onClick={() => claim(activity.id, tier.id)}
-                      >
-                        {claimingTierId === tier.id ? '领取中...' : tier.eligible ? '领取' : '未达标'}
-                      </button>
-                    )}
-                  </div>
-                ))}
               </div>
             </article>
           )}
@@ -676,12 +678,27 @@ function Dashboard({
   const [editingFavorite, setEditingFavorite] = useState<FavoriteSite | null>(null);
   const [favoriteModalOpen, setFavoriteModalOpen] = useState(false);
   const [rechargeActivities, setRechargeActivities] = useState<RechargeActivity[]>([]);
+  const [rechargeClaims, setRechargeClaims] = useState<AdminRechargeRewardClaim[]>([]);
+  const [rechargeClaimKeyword, setRechargeClaimKeyword] = useState('');
+  const [rechargeClaimStatus, setRechargeClaimStatus] = useState('');
+  const [rechargeClaimPage, setRechargeClaimPage] = useState(0);
+  const [rechargeClaimTotalPages, setRechargeClaimTotalPages] = useState(1);
   const [editingRechargeActivity, setEditingRechargeActivity] = useState<RechargeActivity | null>(null);
   const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
   const [dailyMaxUsers, setDailyMaxUsers] = useState(0);
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
+  const [dailyLimitMode, setDailyLimitMode] = useState<'shared' | 'separate'>('shared');
+  const [dailyLimitModeDraft, setDailyLimitModeDraft] = useState<'shared' | 'separate'>('shared');
+  const [directDailyMaxUsers, setDirectDailyMaxUsers] = useState(0);
+  const [directDailyMaxUsersDraft, setDirectDailyMaxUsersDraft] = useState('');
+  const [socialDailyMaxUsers, setSocialDailyMaxUsers] = useState(0);
+  const [socialDailyMaxUsersDraft, setSocialDailyMaxUsersDraft] = useState('');
   const [prizeTiers, setPrizeTiers] = useState<PrizeTierSetting[]>([]);
   const [prizeTierDrafts, setPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
+  const [socialPrizeTiers, setSocialPrizeTiers] = useState<PrizeTierSetting[]>([]);
+  const [socialPrizeTierDrafts, setSocialPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
+  const [adminSettings, setAdminSettings] = useState<AdminSettings>(emptyAdminSettings);
+  const [adminSettingsDraft, setAdminSettingsDraft] = useState<AdminSettings>(emptyAdminSettings);
   const [sub2api, setSub2api] = useState<Sub2APISettings>(emptySub2APISettings);
   const [sub2apiDraft, setSub2apiDraft] = useState<Sub2APISettings>(emptySub2APISettings);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -691,6 +708,9 @@ function Dashboard({
   const [groupRateSaving, setGroupRateSaving] = useState(false);
   const [groupRateRefreshing, setGroupRateRefreshing] = useState(false);
   const [groupRateSaved, setGroupRateSaved] = useState(false);
+  const [groupRateLogDrafts, setGroupRateLogDrafts] = useState<Record<number, { oldRate: string; newRate: string; createdAt: string; publicVisible: boolean }>>({});
+  const [groupRateEditingKey, setGroupRateEditingKey] = useState<string | null>(null);
+  const [editingGroupRate, setEditingGroupRate] = useState<Sub2APIGroupRateGroup | null>(null);
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -727,8 +747,24 @@ function Dashboard({
   function applyCheckInSettings(settingsData: Awaited<ReturnType<typeof fetchCheckInSettings>>) {
     setDailyMaxUsers(settingsData.dailyMaxUsers);
     setDailyMaxUsersDraft(String(settingsData.dailyMaxUsers));
-    setPrizeTiers(Array.isArray(settingsData.prizeTiers) ? settingsData.prizeTiers : []);
-    setPrizeTierDrafts(toPrizeTierDrafts(settingsData.prizeTiers));
+    const nextLimitMode = settingsData.dailyLimitMode === 'separate' ? 'separate' : 'shared';
+    const nextDirectDailyMaxUsers = Number.isFinite(Number(settingsData.directDailyMaxUsers)) ? Number(settingsData.directDailyMaxUsers) : settingsData.dailyMaxUsers;
+    const nextSocialDailyMaxUsers = Number.isFinite(Number(settingsData.socialDailyMaxUsers)) ? Number(settingsData.socialDailyMaxUsers) : settingsData.dailyMaxUsers;
+    setDailyLimitMode(nextLimitMode);
+    setDailyLimitModeDraft(nextLimitMode);
+    setDirectDailyMaxUsers(nextDirectDailyMaxUsers);
+    setDirectDailyMaxUsersDraft(String(nextDirectDailyMaxUsers));
+    setSocialDailyMaxUsers(nextSocialDailyMaxUsers);
+    setSocialDailyMaxUsersDraft(String(nextSocialDailyMaxUsers));
+    const directTiers = Array.isArray(settingsData.directPrizeTiers) ? settingsData.directPrizeTiers : settingsData.prizeTiers;
+    const socialTiers = Array.isArray(settingsData.socialPrizeTiers) ? settingsData.socialPrizeTiers : directTiers;
+    setPrizeTiers(Array.isArray(directTiers) ? directTiers : []);
+    setPrizeTierDrafts(toPrizeTierDrafts(directTiers));
+    setSocialPrizeTiers(Array.isArray(socialTiers) ? socialTiers : []);
+    setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
+    const nextAdmin = settingsData.admin ?? emptyAdminSettings;
+    setAdminSettings(nextAdmin);
+    setAdminSettingsDraft({ ...nextAdmin, password: '' });
     setSub2api(settingsData.sub2api ?? emptySub2APISettings);
     setSub2apiDraft(toSub2APIDraft(settingsData.sub2api ?? emptySub2APISettings));
   }
@@ -762,11 +798,26 @@ function Dashboard({
     }
   }
 
-  async function loadRechargeActivities() {
+  async function loadRechargeActivities(
+    nextClaimPage = rechargeClaimPage,
+    claimFilters = { keyword: rechargeClaimKeyword, status: rechargeClaimStatus }
+  ) {
     setLoading(true);
     setError('');
     try {
-      setRechargeActivities(await fetchRechargeActivities());
+      const [activities, claims] = await Promise.all([
+        fetchRechargeActivities(),
+        fetchRechargeRewardClaims({
+          keyword: claimFilters.keyword,
+          status: claimFilters.status,
+          page: nextClaimPage,
+          size: 10
+        })
+      ]);
+      setRechargeActivities(activities);
+      setRechargeClaims(claims.content);
+      setRechargeClaimPage(claims.number);
+      setRechargeClaimTotalPages(Math.max(claims.totalPages, 1));
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '加载充值活动失败');
     } finally {
@@ -790,14 +841,25 @@ function Dashboard({
     setLoading(true);
     setError('');
     try {
-      const data = await fetchSub2APIGroupRateMonitor();
-      setGroupRateMonitor(data);
-      setGroupRateDraft(data.settings);
+      applyGroupRateMonitor(await fetchSub2APIGroupRateMonitor());
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '加载倍率监控失败');
     } finally {
       setLoading(false);
     }
+  }
+
+  function applyGroupRateMonitor(data: Sub2APIGroupRateMonitor) {
+    setGroupRateMonitor(data);
+    setGroupRateDraft(data.settings);
+    setGroupRateLogDrafts(Object.fromEntries(
+      (data.logs ?? []).map((entry) => [entry.id, {
+        oldRate: Number(entry.oldRate).toFixed(6),
+        newRate: Number(entry.newRate).toFixed(6),
+        createdAt: toDateTimeLocal(entry.createdAt),
+        publicVisible: entry.publicVisible
+      }])
+    ));
   }
 
   useEffect(() => {
@@ -820,22 +882,24 @@ function Dashboard({
     }
   }, [activeSection]);
 
-  const summary = useMemo(() => [
-    { label: '总兑换码', value: stats.total, tone: 'ink' },
-    { label: '未绑定', value: stats.available, tone: 'green' },
-    { label: '已绑定', value: stats.assigned, tone: 'blue' },
-    { label: '已使用', value: stats.used, tone: 'blue' },
-    { label: '已作废', value: stats.voided, tone: 'red' }
-  ], [stats]);
-  const amountOptions = useMemo(() => toAmountOptions(stats.amountStats, prizeTierDrafts), [stats.amountStats, prizeTierDrafts]);
+  const amountOptions = useMemo(() => toAmountOptions(stats.amountStats, [...prizeTierDrafts, ...socialPrizeTierDrafts]), [stats.amountStats, prizeTierDrafts, socialPrizeTierDrafts]);
   const navItems = [
     { key: 'recharge' as const, label: '充值活动', icon: CircleDollarSign },
-    { key: 'home' as const, label: '首页', icon: Home },
     { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
     { key: 'favorites' as const, label: '网站收藏', icon: Bookmark },
     { key: 'rates' as const, label: '倍率监控', icon: Globe2 },
     { key: 'system' as const, label: '系统设置', icon: Settings2 }
   ];
+  const rechargeClaimStatusOptions = [
+    { value: '', label: '全部状态' },
+    { value: 'CLAIMED', label: '已领取' },
+    { value: 'PENDING', label: '处理中' },
+    { value: 'FAILED', label: '失败' }
+  ];
+
+  function rechargeClaimStatusText(value: string) {
+    return rechargeClaimStatusOptions.find((item) => item.value === value)?.label ?? value;
+  }
 
   function logout() {
     clearToken();
@@ -862,10 +926,34 @@ function Dashboard({
       notifyError('每日签到上限必须是大于等于 0 的整数');
       return;
     }
+    const nextDirectDailyMaxUsers = Number(directDailyMaxUsersDraft);
+    const nextSocialDailyMaxUsers = Number(socialDailyMaxUsersDraft);
+    if (dailyLimitModeDraft === 'separate' && (!Number.isInteger(nextDirectDailyMaxUsers) || nextDirectDailyMaxUsers < 0)) {
+      notifyError('站内每日上限必须是大于等于 0 的整数');
+      return;
+    }
+    if (dailyLimitModeDraft === 'separate' && (!Number.isInteger(nextSocialDailyMaxUsers) || nextSocialDailyMaxUsers < 0)) {
+      notifyError('社交每日上限必须是大于等于 0 的整数');
+      return;
+    }
 
-    const parsedPrizeTiers = parsePrizeTierDrafts(prizeTierDrafts);
-    if (typeof parsedPrizeTiers === 'string') {
-      notifyError(parsedPrizeTiers);
+    const parsedDirectPrizeTiers = parsePrizeTierDrafts(prizeTierDrafts);
+    if (typeof parsedDirectPrizeTiers === 'string') {
+      notifyError(`站内签到：${parsedDirectPrizeTiers}`);
+      return;
+    }
+    const parsedSocialPrizeTiers = parsePrizeTierDrafts(socialPrizeTierDrafts);
+    if (typeof parsedSocialPrizeTiers === 'string') {
+      notifyError(`社交签到：${parsedSocialPrizeTiers}`);
+      return;
+    }
+    const parsedAdminSettings = {
+      ...adminSettingsDraft,
+      username: adminSettingsDraft.username.trim(),
+      password: adminSettingsDraft.password ?? ''
+    };
+    if (!parsedAdminSettings.username) {
+      notifyError('后台管理员账号不能为空');
       return;
     }
 
@@ -879,11 +967,27 @@ function Dashboard({
         return;
       }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, parsedPrizeTiers, parsedSub2API);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, parsedAdminSettings, parsedSub2API);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
-      setPrizeTiers(settings.prizeTiers);
-      setPrizeTierDrafts(toPrizeTierDrafts(settings.prizeTiers));
+      const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
+      const savedDirectDailyMaxUsers = Number.isFinite(Number(settings.directDailyMaxUsers)) ? Number(settings.directDailyMaxUsers) : settings.dailyMaxUsers;
+      const savedSocialDailyMaxUsers = Number.isFinite(Number(settings.socialDailyMaxUsers)) ? Number(settings.socialDailyMaxUsers) : settings.dailyMaxUsers;
+      setDailyLimitMode(nextLimitMode);
+      setDailyLimitModeDraft(nextLimitMode);
+      setDirectDailyMaxUsers(savedDirectDailyMaxUsers);
+      setDirectDailyMaxUsersDraft(String(savedDirectDailyMaxUsers));
+      setSocialDailyMaxUsers(savedSocialDailyMaxUsers);
+      setSocialDailyMaxUsersDraft(String(savedSocialDailyMaxUsers));
+      const directTiers = Array.isArray(settings.directPrizeTiers) ? settings.directPrizeTiers : settings.prizeTiers;
+      const socialTiers = Array.isArray(settings.socialPrizeTiers) ? settings.socialPrizeTiers : directTiers;
+      setPrizeTiers(directTiers);
+      setPrizeTierDrafts(toPrizeTierDrafts(directTiers));
+      setSocialPrizeTiers(socialTiers);
+      setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
+      const savedAdmin = settings.admin ?? emptyAdminSettings;
+      setAdminSettings(savedAdmin);
+      setAdminSettingsDraft({ ...savedAdmin, password: '' });
       setSub2api(settings.sub2api);
       setSub2apiDraft(toSub2APIDraft(settings.sub2api));
       setSettingsSaved(true);
@@ -900,9 +1004,7 @@ function Dashboard({
     setGroupRateSaved(false);
     setError('');
     try {
-      const data = await updateSub2APIGroupRateMonitor(groupRateDraft);
-      setGroupRateMonitor(data);
-      setGroupRateDraft(data.settings);
+      applyGroupRateMonitor(await updateSub2APIGroupRateMonitor(groupRateDraft));
       setGroupRateSaved(true);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '保存倍率监控失败');
@@ -915,13 +1017,37 @@ function Dashboard({
     setGroupRateRefreshing(true);
     setError('');
     try {
-      const data = await refreshSub2APIGroupRates();
-      setGroupRateMonitor(data);
-      setGroupRateDraft(data.settings);
+      applyGroupRateMonitor(await refreshSub2APIGroupRates());
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '刷新分组倍率失败');
     } finally {
       setGroupRateRefreshing(false);
+    }
+  }
+
+  async function saveGroupRateLog(id: number) {
+    const draft = groupRateLogDrafts[id];
+    if (!draft) return;
+    const oldRate = Number(draft.oldRate);
+    const newRate = Number(draft.newRate);
+    if (!Number.isFinite(oldRate) || oldRate <= 0 || !Number.isFinite(newRate) || newRate <= 0) {
+      notifyError('旧倍率和新倍率都必须是大于 0 的数字');
+      return;
+    }
+    setGroupRateEditingKey(`log:${id}`);
+    setError('');
+    try {
+      applyGroupRateMonitor(await updateSub2APIGroupRateLog(id, {
+        oldRate,
+        newRate,
+        createdAt: draft.createdAt,
+        publicVisible: draft.publicVisible
+      }));
+      notifySuccess('倍率日志已更新');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '保存倍率日志失败');
+    } finally {
+      setGroupRateEditingKey(null);
     }
   }
 
@@ -941,6 +1067,13 @@ function Dashboard({
       return { ...current, [key]: Array.from(values).sort() };
     });
     setGroupRateSaved(false);
+  }
+
+  function patchGroupRateLogDraft(id: number, patch: Partial<{ oldRate: string; newRate: string; createdAt: string; publicVisible: boolean }>) {
+    setGroupRateLogDrafts((current) => ({
+      ...current,
+      [id]: { ...current[id], ...patch }
+    }));
   }
 
   function setFavoriteCardRef(id: number, element: HTMLElement | null) {
@@ -1078,42 +1211,6 @@ function Dashboard({
 
       {error && <div className="error-banner">{error}</div>}
 
-      {activeSection === 'home' && (
-        <>
-      <section className="summary-grid">
-        {summary.map((item) => (
-          <article key={item.label} className={`metric metric-${item.tone}`}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </section>
-
-      <section className="amount-stats-panel">
-        <div className="amount-stats-head">
-          <CircleDollarSign size={18} />
-          <span>金额库存统计</span>
-        </div>
-        <div className="amount-stats-grid">
-          {stats.amountStats.map((item) => (
-            <article className="amount-stat" key={item.amount}>
-              <strong>{Number(item.amount).toFixed(2)} 元</strong>
-              <div>
-                <span>总数</span>
-                <b>{item.total}</b>
-              </div>
-              <div>
-                <span>未使用</span>
-                <b>{item.available}</b>
-              </div>
-            </article>
-          ))}
-          {stats.amountStats.length === 0 && <div className="amount-stats-empty">暂无兑换码库存</div>}
-        </div>
-      </section>
-        </>
-      )}
-
       {activeSection === 'checkins' && (
         <>
       <section className="summary-grid checkin-summary-grid">
@@ -1151,31 +1248,66 @@ function Dashboard({
             <span>签到设置</span>
           </div>
           <div className="checkin-actions">
-            <label className="daily-limit-field">
-              每日上限
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={dailyMaxUsersDraft}
+            <label className="daily-limit-field daily-limit-mode-field">
+              上限模式
+              <select
+                value={dailyLimitModeDraft}
                 onChange={(event) => {
-                  setDailyMaxUsersDraft(event.target.value);
+                  const nextMode = event.target.value === 'separate' ? 'separate' : 'shared';
+                  setDailyLimitModeDraft(nextMode);
                   setSettingsSaved(false);
                 }}
-              />
+              >
+                <option value="shared">共享上限</option>
+                <option value="separate">分开上限</option>
+              </select>
             </label>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => {
-                setPrizeTierDrafts((current) => [...current, { amount: amountOptions[0] ?? '1.00', probability: '1.00' }]);
-                setSettingsSaved(false);
-              }}
-            >
-              <Plus size={17} />
-              添加档位
-            </button>
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, prizeTiers, prizeTierDrafts, sub2api, sub2apiDraft)}>
+            {dailyLimitModeDraft === 'shared' && (
+              <label className="daily-limit-field">
+                每日上限
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={dailyMaxUsersDraft}
+                  onChange={(event) => {
+                    setDailyMaxUsersDraft(event.target.value);
+                    setSettingsSaved(false);
+                  }}
+                />
+              </label>
+            )}
+            {dailyLimitModeDraft === 'separate' && (
+              <>
+                <label className="daily-limit-field">
+                  站内上限
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={directDailyMaxUsersDraft}
+                    onChange={(event) => {
+                      setDirectDailyMaxUsersDraft(event.target.value);
+                      setSettingsSaved(false);
+                    }}
+                  />
+                </label>
+                <label className="daily-limit-field">
+                  社交上限
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={socialDailyMaxUsersDraft}
+                    onChange={(event) => {
+                      setSocialDailyMaxUsersDraft(event.target.value);
+                      setSettingsSaved(false);
+                    }}
+                  />
+                </label>
+              </>
+            )}
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
@@ -1183,12 +1315,24 @@ function Dashboard({
           </div>
         </div>
 
+        <div className="checkin-tier-grid">
         <div className="tier-editor">
           <div className="tier-editor-head">
-            <span>兑换码金额概率</span>
+            <span>站内签到金额概率</span>
             <div className={`probability-total ${prizeTierTotal(prizeTierDrafts) === 100 ? 'is-valid' : ''}`}>
               合计 {prizeTierTotal(prizeTierDrafts).toFixed(2)}%
             </div>
+            <button
+              type="button"
+              className="ghost-btn compact-action"
+              onClick={() => {
+                setPrizeTierDrafts((current) => [...current, { amount: amountOptions[0] ?? '1.00', probability: '1.00' }]);
+                setSettingsSaved(false);
+              }}
+            >
+              <Plus size={16} />
+              添加站内档位
+            </button>
           </div>
           <div className="tier-table">
             <datalist id="prize-amount-options">
@@ -1238,6 +1382,70 @@ function Dashboard({
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="tier-editor">
+          <div className="tier-editor-head">
+            <span>社交签到金额概率</span>
+            <div className={`probability-total ${prizeTierTotal(socialPrizeTierDrafts) === 100 ? 'is-valid' : ''}`}>
+              合计 {prizeTierTotal(socialPrizeTierDrafts).toFixed(2)}%
+            </div>
+            <button
+              type="button"
+              className="ghost-btn compact-action"
+              onClick={() => {
+                setSocialPrizeTierDrafts((current) => [...current, { amount: amountOptions[0] ?? '1.00', probability: '1.00' }]);
+                setSettingsSaved(false);
+              }}
+            >
+              <Plus size={16} />
+              添加社交档位
+            </button>
+          </div>
+          <div className="tier-table">
+            <div className="tier-table-head">
+              <span>金额</span>
+              <span>概率 %</span>
+              <span>操作</span>
+            </div>
+            <div className="tier-list">
+              {socialPrizeTierDrafts.map((tier, index) => (
+                <div className="tier-row" key={index}>
+                  <input
+                    aria-label={`社交第 ${index + 1} 档金额`}
+                    list="prize-amount-options"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={tier.amount}
+                    onChange={(event) => updatePrizeTierDraft(index, 'amount', event.target.value, setSocialPrizeTierDrafts, setSettingsSaved)}
+                  />
+                  <input
+                    aria-label={`社交第 ${index + 1} 档概率`}
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    value={tier.probability}
+                    onChange={(event) => updatePrizeTierDraft(index, 'probability', event.target.value, setSocialPrizeTierDrafts, setSettingsSaved)}
+                  />
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="删除"
+                    disabled={socialPrizeTierDrafts.length <= 1}
+                    onClick={() => {
+                      setSocialPrizeTierDrafts((current) => current.filter((_, currentIndex) => currentIndex !== index));
+                      setSettingsSaved(false);
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
         </div>
 
       </form>
@@ -1528,6 +1736,104 @@ function Dashboard({
               )}
             </div>
           </section>
+
+          <section className="table-panel recharge-claims-panel">
+            <form
+              className="toolbar recharge-claim-toolbar"
+              onSubmit={(event) => {
+                event.preventDefault();
+                loadRechargeActivities(0);
+              }}
+            >
+              <div className="settings-title">
+                <KeyRound size={18} />
+                <span>用户兑换记录</span>
+              </div>
+              <div className="search-box">
+                <Search size={17} />
+                <input
+                  value={rechargeClaimKeyword}
+                  onChange={(event) => setRechargeClaimKeyword(event.target.value)}
+                  placeholder="用户 ID 或兑换码"
+                />
+              </div>
+              <select value={rechargeClaimStatus} onChange={(event) => setRechargeClaimStatus(event.target.value)}>
+                {rechargeClaimStatusOptions.map((item) => (
+                  <option key={item.value || 'all'} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+              <button className="ghost-btn" type="submit" disabled={loading}>
+                <Search size={17} />
+                查询
+              </button>
+              <button
+                className="ghost-btn"
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  setRechargeClaimKeyword('');
+                  setRechargeClaimStatus('');
+                  loadRechargeActivities(0, { keyword: '', status: '' });
+                }}
+              >
+                <CheckCircle2 size={17} />
+                刷新
+              </button>
+            </form>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>用户 ID</th>
+                  <th>活动</th>
+                  <th>门槛</th>
+                  <th>奖励</th>
+                  <th>状态</th>
+                  <th>兑换码</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rechargeClaims.map((claim) => (
+                  <tr key={claim.id}>
+                    <td>{claim.userId}</td>
+                    <td>
+                      <strong>{claim.activityName || `活动 #${claim.activityId}`}</strong>
+                      <small>档位 #{claim.tierSort + 1}</small>
+                    </td>
+                    <td>{Number(claim.thresholdAmount).toFixed(2)}</td>
+                    <td>{Number(claim.rewardAmount).toFixed(2)}</td>
+                    <td>
+                      <span className={`claim-status claim-${claim.status.toLowerCase()}`}>
+                        {rechargeClaimStatusText(claim.status)}
+                      </span>
+                    </td>
+                    <td>
+                      <code>{claim.redeemCode || '-'}</code>
+                      {claim.errorMessage && <small className="claim-error">{claim.errorMessage}</small>}
+                    </td>
+                    <td>{formatDateTime(claim.updatedAt || claim.createdAt)}</td>
+                  </tr>
+                ))}
+                {!loading && rechargeClaims.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="empty-cell">暂无用户兑换记录</td>
+                  </tr>
+                )}
+                {loading && rechargeClaims.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="empty-cell">加载中...</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <footer className="pager">
+              <button disabled={rechargeClaimPage <= 0 || loading} onClick={() => loadRechargeActivities(rechargeClaimPage - 1)}>上一页</button>
+              <span>{rechargeClaimPage + 1} / {rechargeClaimTotalPages}</span>
+              <button disabled={rechargeClaimPage + 1 >= rechargeClaimTotalPages || loading} onClick={() => loadRechargeActivities(rechargeClaimPage + 1)}>下一页</button>
+            </footer>
+          </section>
         </>
       )}
 
@@ -1596,6 +1902,7 @@ function Dashboard({
                 <span>最后拉取</span>
                 <span>监控</span>
                 <span>公开</span>
+                <span>操作</span>
               </div>
               {groupRateMonitor.groups.map((group) => {
                 const monitorAll = groupRateDraft.monitoredGroupIds.length === 0;
@@ -1607,7 +1914,14 @@ function Dashboard({
                       <strong>{group.groupName}</strong>
                       <small>{group.groupId}</small>
                     </div>
-                    <span>{Number(group.rateMultiplier).toFixed(4)}</span>
+                    <input
+                      className="compact-rate-input"
+                      type="number"
+                      min="0.000001"
+                      step="0.000001"
+                      value={Number(group.rateMultiplier).toFixed(6)}
+                      readOnly
+                    />
                     <span>{group.lastSeenAt || '-'}</span>
                     <label className="toggle-row compact">
                       <input
@@ -1626,6 +1940,14 @@ function Dashboard({
                       />
                       展示
                     </label>
+                    <button
+                      className="icon-btn"
+                      type="button"
+                      title="倍率日志"
+                      onClick={() => setEditingGroupRate(group)}
+                    >
+                      <Pencil size={16} />
+                    </button>
                   </div>
                 );
               })}
@@ -1642,6 +1964,82 @@ function Dashboard({
             </div>
             <RateLineChart series={groupRateMonitor.series} />
           </section>
+
+          <section className="user-info-panel group-rate-log-panel">
+            <div className="settings-title">
+              <Pencil size={18} />
+              <span>最近倍率变动日志</span>
+            </div>
+            <div className="group-rate-log-table">
+              <div className="group-rate-log-row group-rate-head">
+                <span>分组</span>
+                <span>旧倍率</span>
+                <span>新倍率</span>
+                <span>来源</span>
+                <span>变动时间</span>
+                <span>公开</span>
+                <span>操作</span>
+              </div>
+              {(groupRateMonitor.logs ?? []).map((entry) => {
+                const draft = groupRateLogDrafts[entry.id] ?? {
+                  oldRate: Number(entry.oldRate).toFixed(6),
+                  newRate: Number(entry.newRate).toFixed(6),
+                  createdAt: toDateTimeLocal(entry.createdAt),
+                  publicVisible: entry.publicVisible
+                };
+                return (
+                  <div className="group-rate-log-row" key={entry.id}>
+                    <div>
+                      <strong>{entry.groupName}</strong>
+                      <small>{entry.groupId}</small>
+                    </div>
+                    <input
+                      className="compact-rate-input"
+                      type="number"
+                      min="0.000001"
+                      step="0.000001"
+                      value={draft.oldRate}
+                      onChange={(event) => patchGroupRateLogDraft(entry.id, { oldRate: event.target.value })}
+                    />
+                    <input
+                      className="compact-rate-input"
+                      type="number"
+                      min="0.000001"
+                      step="0.000001"
+                      value={draft.newRate}
+                      onChange={(event) => patchGroupRateLogDraft(entry.id, { newRate: event.target.value })}
+                    />
+                    <span>{entry.source}</span>
+                    <input
+                      type="datetime-local"
+                      value={draft.createdAt}
+                      onChange={(event) => patchGroupRateLogDraft(entry.id, { createdAt: event.target.value })}
+                    />
+                    <label className="toggle-row compact">
+                      <input
+                        type="checkbox"
+                        checked={draft.publicVisible}
+                        onChange={(event) => patchGroupRateLogDraft(entry.id, { publicVisible: event.target.checked })}
+                      />
+                      展示
+                    </label>
+                    <button
+                      className="icon-btn"
+                      type="button"
+                      title="保存日志"
+                      disabled={groupRateEditingKey === `log:${entry.id}`}
+                      onClick={() => saveGroupRateLog(entry.id)}
+                    >
+                      <CheckCircle2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+              {!loading && (groupRateMonitor.logs ?? []).length === 0 && (
+                <div className="amount-stats-empty">暂无倍率变动日志。</div>
+              )}
+            </div>
+          </section>
         </>
       )}
 
@@ -1652,11 +2050,42 @@ function Dashboard({
               <Settings2 size={18} />
               <span>系统设置</span>
             </div>
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, prizeTiers, prizeTierDrafts, sub2api, sub2apiDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
             {settingsSaved && <span className="settings-saved">已保存</span>}
+          </div>
+
+          <div className="sub2api-editor standalone">
+            <div className="tier-editor-head">
+              <span>后台管理员</span>
+            </div>
+            <div className="sub2api-grid">
+              <label>
+                登录账号
+                <input
+                  value={adminSettingsDraft.username}
+                  onChange={(event) => {
+                    setAdminSettingsDraft((current) => ({ ...current, username: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder="admin"
+                />
+              </label>
+              <label>
+                登录密码
+                <input
+                  type="password"
+                  value={adminSettingsDraft.password ?? ''}
+                  onChange={(event) => {
+                    setAdminSettingsDraft((current) => ({ ...current, password: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder={adminSettings.passwordSet ? '已设置，留空则不修改' : '输入新的后台登录密码'}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="sub2api-editor standalone">
@@ -1771,6 +2200,16 @@ function Dashboard({
           }}
         />
       )}
+
+      {editingGroupRate && (
+        <GroupRateLogModal
+          group={editingGroupRate}
+          onClose={() => setEditingGroupRate(null)}
+          onChanged={async () => {
+            applyGroupRateMonitor(await fetchSub2APIGroupRateMonitor());
+          }}
+        />
+      )}
       </section>
     </main>
   );
@@ -1800,6 +2239,212 @@ function SiteIcon({ site }: { site: FavoriteSite }) {
   return (
     <div className="site-icon fallback" aria-hidden="true">
       {site.name.trim().slice(0, 1).toUpperCase() || <Bookmark size={15} />}
+    </div>
+  );
+}
+
+function GroupRateLogModal({
+  group,
+  onClose,
+  onChanged
+}: {
+  group: Sub2APIGroupRateGroup;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [logs, setLogs] = useState<Sub2APIGroupRateLog[]>([]);
+  const [drafts, setDrafts] = useState<Record<number, { oldRate: string; newRate: string; createdAt: string; publicVisible: boolean }>>({});
+  const [newRate, setNewRate] = useState('');
+  const [newTime, setNewTime] = useState(() => toDateTimeLocal(new Date().toISOString()));
+  const [newPublicVisible, setNewPublicVisible] = useState(group.publicVisible);
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  function applyLogs(nextLogs: Sub2APIGroupRateLog[]) {
+    setLogs(nextLogs);
+    setDrafts(Object.fromEntries(nextLogs.map((entry) => [entry.id, {
+      oldRate: Number(entry.oldRate).toFixed(6),
+      newRate: Number(entry.newRate).toFixed(6),
+      createdAt: toDateTimeLocal(entry.createdAt),
+      publicVisible: entry.publicVisible
+    }])));
+  }
+
+  async function loadLogs() {
+    setLoading(true);
+    try {
+      applyLogs(await fetchSub2APIGroupRateLogs(group.groupId));
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '加载倍率日志失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadLogs();
+  }, [group.groupId]);
+
+  function patchDraft(id: number, patch: Partial<{ oldRate: string; newRate: string; createdAt: string; publicVisible: boolean }>) {
+    setDrafts((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
+  }
+
+  async function addLog(event: FormEvent) {
+    event.preventDefault();
+    const parsedRate = Number(newRate);
+    if (!Number.isFinite(parsedRate) || parsedRate <= 0) {
+      notifyError('倍率必须是大于 0 的数字');
+      return;
+    }
+    setSavingKey('new');
+    try {
+      applyLogs(await createSub2APIGroupRateLog(group.groupId, {
+        rateMultiplier: parsedRate,
+        createdAt: newTime,
+        publicVisible: newPublicVisible
+      }));
+      setNewRate('');
+      setNewTime(toDateTimeLocal(new Date().toISOString()));
+      await onChanged();
+      notifySuccess('倍率日志已新增');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '新增倍率日志失败');
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function saveLog(entry: Sub2APIGroupRateLog) {
+    const draft = drafts[entry.id];
+    if (!draft) return;
+    const oldRate = Number(draft.oldRate);
+    const nextRate = Number(draft.newRate);
+    if (!Number.isFinite(oldRate) || oldRate <= 0 || !Number.isFinite(nextRate) || nextRate <= 0) {
+      notifyError('旧倍率和新倍率都必须是大于 0 的数字');
+      return;
+    }
+    setSavingKey(`save:${entry.id}`);
+    try {
+      await updateSub2APIGroupRateLog(entry.id, {
+        oldRate,
+        newRate: nextRate,
+        createdAt: draft.createdAt,
+        publicVisible: draft.publicVisible
+      });
+      applyLogs(await fetchSub2APIGroupRateLogs(group.groupId));
+      await onChanged();
+      notifySuccess('倍率日志已保存');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '保存倍率日志失败');
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function removeLog(entry: Sub2APIGroupRateLog) {
+    if (!await confirmDialog({
+      title: '删除倍率日志',
+      message: `确认删除 ${entry.groupName} 在 ${entry.createdAt} 的倍率记录？`,
+      confirmText: '删除',
+      danger: true
+    })) {
+      return;
+    }
+    setSavingKey(`delete:${entry.id}`);
+    try {
+      applyLogs(await deleteSub2APIGroupRateLog(entry.id));
+      await onChanged();
+      notifySuccess('倍率日志已删除');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '删除倍率日志失败');
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal group-rate-log-modal">
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Rate History</span>
+            <h2>{group.groupName} 倍率日志</h2>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form className="group-rate-log-create" onSubmit={addLog}>
+          <label>
+            变动时间
+            <input type="datetime-local" value={newTime} onChange={(event) => setNewTime(event.target.value)} required />
+          </label>
+          <label>
+            新倍率
+            <input
+              type="number"
+              min="0.000001"
+              step="0.000001"
+              value={newRate}
+              onChange={(event) => setNewRate(event.target.value)}
+              placeholder={Number(group.rateMultiplier).toFixed(6)}
+              required
+            />
+          </label>
+          <label className="toggle-row compact">
+            <input type="checkbox" checked={newPublicVisible} onChange={(event) => setNewPublicVisible(event.target.checked)} />
+            公开
+          </label>
+          <button className="primary-btn" type="submit" disabled={savingKey === 'new'}>
+            <Plus size={17} />
+            {savingKey === 'new' ? '新增中...' : '新增日志'}
+          </button>
+        </form>
+
+        <div className="group-rate-log-table modal-log-table">
+          <div className="group-rate-log-row modal-log-row group-rate-head">
+            <span>变动时间</span>
+            <span>旧倍率</span>
+            <span>新倍率</span>
+            <span>来源</span>
+            <span>公开</span>
+            <span>操作</span>
+          </div>
+          {logs.map((entry) => {
+            const draft = drafts[entry.id] ?? {
+              oldRate: Number(entry.oldRate).toFixed(6),
+              newRate: Number(entry.newRate).toFixed(6),
+              createdAt: toDateTimeLocal(entry.createdAt),
+              publicVisible: entry.publicVisible
+            };
+            return (
+              <div className="group-rate-log-row modal-log-row" key={entry.id}>
+                <input type="datetime-local" value={draft.createdAt} onChange={(event) => patchDraft(entry.id, { createdAt: event.target.value })} />
+                <input className="compact-rate-input" type="number" min="0.000001" step="0.000001" value={draft.oldRate} onChange={(event) => patchDraft(entry.id, { oldRate: event.target.value })} />
+                <input className="compact-rate-input" type="number" min="0.000001" step="0.000001" value={draft.newRate} onChange={(event) => patchDraft(entry.id, { newRate: event.target.value })} />
+                <span>{entry.source}</span>
+                <label className="toggle-row compact">
+                  <input type="checkbox" checked={draft.publicVisible} onChange={(event) => patchDraft(entry.id, { publicVisible: event.target.checked })} />
+                  展示
+                </label>
+                <div className="modal-log-actions">
+                  <button className="icon-btn" type="button" title="保存日志" disabled={savingKey === `save:${entry.id}`} onClick={() => saveLog(entry)}>
+                    <CheckCircle2 size={16} />
+                  </button>
+                  <button className="icon-btn danger-icon" type="button" title="删除日志" disabled={savingKey === `delete:${entry.id}`} onClick={() => removeLog(entry)}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {!loading && logs.length === 0 && (
+            <div className="amount-stats-empty">暂无倍率日志，可以在上方新增第一条记录。</div>
+          )}
+          {loading && <div className="amount-stats-empty">正在加载倍率日志</div>}
+        </div>
+      </div>
     </div>
   );
 }

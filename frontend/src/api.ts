@@ -82,7 +82,13 @@ export interface FavoriteSitePayload {
 
 export interface CheckInSettings {
   dailyMaxUsers: number;
+  dailyLimitMode: 'shared' | 'separate';
+  directDailyMaxUsers: number;
+  socialDailyMaxUsers: number;
   prizeTiers: PrizeTierSetting[];
+  directPrizeTiers: PrizeTierSetting[];
+  socialPrizeTiers: PrizeTierSetting[];
+  admin: AdminSettings;
   sub2api: Sub2APISettings;
 }
 
@@ -93,6 +99,8 @@ export interface CheckInResult {
   signDate: string | null;
   code: string;
   amount: number;
+  checkInMethod?: string;
+  platformType?: string;
   message: string;
 }
 
@@ -122,6 +130,12 @@ export interface Sub2APISettings {
   adminPassword?: string;
   adminPasswordSet: boolean;
   timeoutSeconds: number;
+}
+
+export interface AdminSettings {
+  username: string;
+  password?: string;
+  passwordSet: boolean;
 }
 
 export interface UserSocialBinding {
@@ -223,6 +237,22 @@ export interface ClaimRechargeRewardResult {
   rewardAmount: number;
 }
 
+export interface AdminRechargeRewardClaim {
+  id: number;
+  activityId: number;
+  activityName: string;
+  tierId: number;
+  tierSort: number;
+  userId: number;
+  thresholdAmount: number;
+  rewardAmount: number;
+  status: string;
+  redeemCode: string;
+  errorMessage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SocialBindingPayload {
   platform: string;
   userId: string;
@@ -265,10 +295,41 @@ export interface Sub2APIGroupRateSeries {
   points: Sub2APIGroupRatePoint[];
 }
 
+export interface Sub2APIGroupRateLog {
+  id: number;
+  groupId: string;
+  groupName: string;
+  oldRate: number;
+  newRate: number;
+  source: string;
+  publicVisible: boolean;
+  createdAt: string;
+}
+
 export interface Sub2APIGroupRateMonitor {
   settings: Sub2APIGroupRateMonitorSettings;
   groups: Sub2APIGroupRateGroup[];
   series: Sub2APIGroupRateSeries[];
+  logs: Sub2APIGroupRateLog[];
+}
+
+export interface Sub2APIGroupRateUpdatePayload {
+  rateMultiplier: number;
+  groupName?: string;
+  createdAt?: string;
+}
+
+export interface Sub2APIGroupRateLogUpdatePayload {
+  oldRate: number;
+  newRate: number;
+  createdAt?: string;
+  publicVisible?: boolean;
+}
+
+export interface Sub2APIGroupRateLogCreatePayload {
+  rateMultiplier: number;
+  createdAt?: string;
+  publicVisible?: boolean;
 }
 
 export function getToken() {
@@ -375,10 +436,19 @@ export async function fetchCheckInStats() {
   return request<CheckInStats>('/api/admin/check-in-stats');
 }
 
-export async function updateCheckInSettings(dailyMaxUsers: number, prizeTiers: PrizeTierSetting[], sub2api: Sub2APISettings) {
+export async function updateCheckInSettings(
+  dailyMaxUsers: number,
+  dailyLimitMode: 'shared' | 'separate',
+  directDailyMaxUsers: number,
+  socialDailyMaxUsers: number,
+  directPrizeTiers: PrizeTierSetting[],
+  socialPrizeTiers: PrizeTierSetting[],
+  admin: AdminSettings,
+  sub2api: Sub2APISettings
+) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, prizeTiers, sub2api })
+    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, admin, sub2api })
   });
 }
 
@@ -457,6 +527,16 @@ export async function fetchRechargeActivities() {
   return request<RechargeActivity[]>('/api/admin/recharge-activities');
 }
 
+export async function fetchRechargeRewardClaims(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+  return request<PageResult<AdminRechargeRewardClaim>>(`/api/admin/recharge-reward-claims?${query.toString()}`);
+}
+
 export async function createRechargeActivity(payload: RechargeActivityPayload) {
   return request<RechargeActivity>('/api/admin/recharge-activities', {
     method: 'POST',
@@ -491,6 +571,37 @@ export async function updateSub2APIGroupRateMonitor(settings: Sub2APIGroupRateMo
 export async function refreshSub2APIGroupRates() {
   return request<Sub2APIGroupRateMonitor>('/api/admin/sub2api/group-rate-monitor/refresh', {
     method: 'POST'
+  });
+}
+
+export async function updateSub2APIGroupRate(groupId: string, payload: Sub2APIGroupRateUpdatePayload) {
+  return request<Sub2APIGroupRateMonitor>(`/api/admin/sub2api/group-rate-monitor/groups/${encodeURIComponent(groupId)}/rate`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateSub2APIGroupRateLog(id: number, payload: Sub2APIGroupRateLogUpdatePayload) {
+  return request<Sub2APIGroupRateMonitor>(`/api/admin/sub2api/group-rate-monitor/logs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchSub2APIGroupRateLogs(groupId: string) {
+  return request<Sub2APIGroupRateLog[]>(`/api/admin/sub2api/group-rate-monitor/groups/${encodeURIComponent(groupId)}/logs`);
+}
+
+export async function createSub2APIGroupRateLog(groupId: string, payload: Sub2APIGroupRateLogCreatePayload) {
+  return request<Sub2APIGroupRateLog[]>(`/api/admin/sub2api/group-rate-monitor/groups/${encodeURIComponent(groupId)}/logs`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteSub2APIGroupRateLog(id: number) {
+  return request<Sub2APIGroupRateLog[]>(`/api/admin/sub2api/group-rate-monitor/logs/${id}`, {
+    method: 'DELETE'
   });
 }
 

@@ -88,11 +88,22 @@ func (app *App) migrate() error {
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_check_in_records_user_date ON check_in_records (user_id, sign_date)`,
 		`CREATE INDEX IF NOT EXISTS idx_check_in_records_code_id ON check_in_records (redeem_code_id)`,
+		`ALTER TABLE check_in_records ADD COLUMN IF NOT EXISTS check_in_method VARCHAR(20) NOT NULL DEFAULT 'direct'`,
+		`ALTER TABLE check_in_records ADD COLUMN IF NOT EXISTS platform_type VARCHAR(40) NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_check_in_records_method_date ON check_in_records (check_in_method, sign_date)`,
 		`CREATE TABLE IF NOT EXISTS daily_checkin_limits (
 			sign_date DATE PRIMARY KEY,
 			checked_count INT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS daily_checkin_method_limits (
+			sign_date DATE NOT NULL,
+			check_in_method VARCHAR(20) NOT NULL,
+			checked_count INT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (sign_date, check_in_method)
 		)`,
 		`CREATE TABLE IF NOT EXISTS system_settings (
 			setting_key VARCHAR(100) PRIMARY KEY,
@@ -196,4 +207,12 @@ func (app *App) migrate() error {
 func isDuplicateEntry(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func duplicateConstraintName(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return pgErr.ConstraintName
+	}
+	return ""
 }

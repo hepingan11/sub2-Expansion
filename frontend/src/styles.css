@@ -635,12 +635,12 @@ textarea {
 }
 
 .reward-progress {
-  padding: 4px 8px 0;
+  padding: 18px 12px 28px;
 }
 
 .reward-progress-track {
   position: relative;
-  height: 14px;
+  height: 16px;
   border-radius: 999px;
   background: #e8dfcf;
   box-shadow: inset 0 1px 2px rgba(36, 29, 21, 0.08);
@@ -654,76 +654,162 @@ textarea {
   transition: width 180ms ease;
 }
 
-.reward-progress-marker {
+.reward-progress-point {
   position: absolute;
   top: 50%;
-  width: 18px;
-  height: 18px;
+  z-index: 2;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  outline: 0;
+  transform: translate(-50%, -50%);
+}
+
+.reward-progress-point::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+}
+
+.reward-progress-point:hover,
+.reward-progress-point:focus-within,
+.reward-progress-point:focus {
+  z-index: 12;
+}
+
+.reward-progress-marker {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 22px;
+  height: 22px;
   border: 3px solid #f8f4ea;
   border-radius: 50%;
   background: #b8aa95;
   box-shadow: 0 0 0 1px rgba(36, 29, 21, 0.12);
   transform: translate(-50%, -50%);
+  transition: width 160ms ease, height 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
-.reward-progress-marker.is-ready {
+.reward-progress-point.is-ready .reward-progress-marker {
   background: #d18a2c;
 }
 
-.reward-progress-marker.is-claimed {
+.reward-progress-point.is-claimed .reward-progress-marker {
   background: #16734a;
 }
 
-.reward-progress-steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
+.reward-progress-point:hover .reward-progress-marker,
+.reward-progress-point:focus .reward-progress-marker,
+.reward-progress-point:focus-within .reward-progress-marker {
+  width: 30px;
+  height: 30px;
+  box-shadow: 0 0 0 5px rgba(209, 138, 44, 0.16), 0 10px 22px rgba(36, 29, 21, 0.18);
 }
 
-.reward-progress-step {
+.reward-progress-popover {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  width: 210px;
   display: grid;
-  grid-template-rows: minmax(52px, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 116px;
+  gap: 6px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 38px rgba(36, 29, 21, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -6px);
+  transition: opacity 140ms ease, transform 140ms ease;
 }
 
-.reward-progress-step.is-ready {
-  border-color: rgba(209, 138, 44, 0.42);
-  background: rgba(255, 248, 234, 0.92);
+.reward-progress-popover::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 14px;
 }
 
-.reward-progress-step.is-claimed {
-  border-color: rgba(22, 115, 74, 0.28);
-  background: rgba(238, 249, 242, 0.9);
+.reward-progress-popover::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
 }
 
-.reward-progress-step span {
+.reward-progress-point:hover .reward-progress-popover,
+.reward-progress-point:focus .reward-progress-popover,
+.reward-progress-point:focus-within .reward-progress-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.reward-progress-point.is-start .reward-progress-popover {
+  left: -6px;
+  transform: translate(0, -6px);
+}
+
+.reward-progress-point.is-start:hover .reward-progress-popover,
+.reward-progress-point.is-start:focus .reward-progress-popover,
+.reward-progress-point.is-start:focus-within .reward-progress-popover {
+  transform: translate(0, 0);
+}
+
+.reward-progress-point.is-start .reward-progress-popover::before {
+  left: 18px;
+}
+
+.reward-progress-point.is-end .reward-progress-popover {
+  right: -6px;
+  left: auto;
+  transform: translate(0, -6px);
+}
+
+.reward-progress-point.is-end:hover .reward-progress-popover,
+.reward-progress-point.is-end:focus .reward-progress-popover,
+.reward-progress-point.is-end:focus-within .reward-progress-popover {
+  transform: translate(0, 0);
+}
+
+.reward-progress-point.is-end .reward-progress-popover::before {
+  right: 18px;
+  left: auto;
+}
+
+.reward-progress-popover span {
   display: block;
   color: var(--muted);
 }
 
-.reward-progress-step .reward-activity-name {
-  margin-bottom: 5px;
+.reward-progress-popover .reward-activity-name {
   color: var(--blue);
   font-size: 13px;
   font-weight: 800;
   overflow-wrap: anywhere;
 }
 
-.reward-progress-step strong {
+.reward-progress-popover strong {
   display: block;
-  margin-top: 3px;
   color: var(--ink);
+  font-size: 17px;
 }
 
-.reward-progress-step .ghost-btn,
-.reward-progress-step .reward-status {
+.reward-progress-popover .ghost-btn,
+.reward-progress-popover .reward-status {
   width: 100%;
+  margin-top: 4px;
 }
 
 .reward-status {
@@ -748,6 +834,49 @@ textarea {
 .recharge-admin-card .site-icon.is-muted {
   color: var(--muted);
   background: #f2eee5;
+}
+
+.recharge-claims-panel {
+  margin-top: 16px;
+}
+
+.recharge-claim-toolbar {
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.2fr) 150px auto auto;
+  margin-bottom: 12px;
+}
+
+.claim-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f2eee5;
+  color: var(--muted);
+}
+
+.claim-claimed {
+  color: var(--green);
+  background: rgba(22, 115, 74, 0.1);
+}
+
+.claim-pending {
+  color: var(--blue);
+  background: rgba(38, 91, 149, 0.1);
+}
+
+.claim-failed {
+  color: var(--red);
+  background: rgba(181, 68, 55, 0.1);
+}
+
+.claim-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--red);
+  overflow-wrap: anywhere;
 }
 
 .favorite-group-pill.is-disabled {
@@ -1073,11 +1202,16 @@ textarea {
 }
 
 .daily-limit-field {
-  width: 136px;
+  width: 148px;
   gap: 5px;
 }
 
+.daily-limit-mode-field {
+  width: 158px;
+}
+
 .daily-limit-field input,
+.daily-limit-field select,
 .checkin-settings .tier-row input,
 .checkin-settings .tier-row select {
   min-height: 38px;
@@ -1088,8 +1222,16 @@ textarea {
   gap: 8px;
 }
 
+.checkin-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
 .checkin-settings .tier-editor {
-  width: min(620px, 100%);
+  width: 100%;
+  min-width: 0;
 }
 
 .tier-editor-head {
@@ -1100,6 +1242,12 @@ textarea {
   gap: 10px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.tier-editor-head .compact-action {
+  min-height: 34px;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .tier-list {
@@ -1194,10 +1342,10 @@ textarea {
 
 .group-rate-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) 110px 170px 100px 100px;
+  grid-template-columns: minmax(180px, 1.4fr) 130px 170px 100px 100px 70px;
   gap: 10px;
   align-items: center;
-  min-width: 780px;
+  min-width: 930px;
   padding: 10px 12px;
   border-top: 1px solid var(--line);
 }
@@ -1228,6 +1376,93 @@ textarea {
 .toggle-row.compact {
   min-height: auto;
   font-size: 13px;
+}
+
+.compact-rate-input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.group-rate-log-panel {
+  margin-top: 14px;
+}
+
+.group-rate-log-table {
+  margin-top: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.group-rate-log-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) 120px 120px 110px 180px 95px 70px;
+  gap: 10px;
+  align-items: center;
+  min-width: 980px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.group-rate-log-row:first-child {
+  border-top: 0;
+}
+
+.group-rate-log-row strong,
+.group-rate-log-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.group-rate-log-row small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.modal.group-rate-log-modal {
+  width: min(1120px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+  padding: 28px 32px 32px;
+}
+
+.group-rate-log-create {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 220px) 90px minmax(132px, auto);
+  gap: 12px;
+  align-items: end;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.group-rate-log-create .primary-btn {
+  min-width: 132px;
+  white-space: nowrap;
+}
+
+.modal-log-table {
+  max-height: min(56vh, 560px);
+  overflow: auto;
+}
+
+.modal-log-row {
+  grid-template-columns: minmax(210px, 1fr) 140px 140px minmax(120px, 0.8fr) 96px 92px;
+  min-width: 900px;
+}
+
+.modal-log-actions {
+  display: inline-flex;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.danger-icon {
+  color: var(--red);
 }
 
 .rate-chart {
@@ -1861,6 +2096,24 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
+  .checkin-tier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal.group-rate-log-modal {
+    width: min(100%, calc(100vw - 24px));
+    padding: 22px;
+  }
+
+  .group-rate-log-create {
+    grid-template-columns: minmax(220px, 1fr) minmax(170px, 220px);
+  }
+
+  .group-rate-log-create .toggle-row,
+  .group-rate-log-create .primary-btn {
+    width: 100%;
+  }
+
   .settings-panel-head {
     align-items: stretch;
   }
@@ -1973,5 +2226,17 @@ tr:last-child td {
   .modal-actions .primary-btn,
   .danger-btn {
     width: 100%;
+  }
+
+  .modal-backdrop {
+    padding: 12px;
+  }
+
+  .modal.group-rate-log-modal {
+    padding: 18px;
+  }
+
+  .group-rate-log-create {
+    grid-template-columns: 1fr;
   }
 }

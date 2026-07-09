@@ -6,16 +6,25 @@ import (
 )
 
 const (
-	statusAvailable = "AVAILABLE"
-	statusAssigned  = "ASSIGNED"
-	statusUsed      = "USED"
-	statusVoided    = "VOIDED"
-	claimPending    = "PENDING"
-	claimClaimed    = "CLAIMED"
-	claimFailed     = "FAILED"
+	statusAvailable     = "AVAILABLE"
+	statusAssigned      = "ASSIGNED"
+	statusUsed          = "USED"
+	statusVoided        = "VOIDED"
+	claimPending        = "PENDING"
+	claimClaimed        = "CLAIMED"
+	claimFailed         = "FAILED"
+	checkInMethodDirect = "direct"
+	checkInMethodSocial = "social"
 
-	dailyMaxUsersKey = "check_in.daily_max_users"
-	prizeTiersKey    = "check_in.prize_tiers"
+	dailyMaxUsersKey       = "check_in.daily_max_users"
+	dailyLimitModeKey      = "check_in.daily_limit_mode"
+	directDailyMaxUsersKey = "check_in.direct_daily_max_users"
+	socialDailyMaxUsersKey = "check_in.social_daily_max_users"
+	prizeTiersKey          = "check_in.prize_tiers"
+	socialPrizeTiersKey    = "check_in.social_prize_tiers"
+
+	adminUsernameKey     = "admin.username"
+	adminPasswordHashKey = "admin.password_hash"
 
 	sub2APIBaseURLKey        = "sub2api.base_url"
 	sub2APIAdminAPIKeyKey    = "sub2api.admin_api_key"

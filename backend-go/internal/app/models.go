@@ -39,11 +39,13 @@ func (r *RedeemCode) BeforeUpdate(*gorm.DB) error {
 }
 
 type CheckInRecord struct {
-	ID           uint64    `gorm:"primaryKey;column:id"`
-	UserID       string    `gorm:"column:user_id;size:64;not null;uniqueIndex:uk_check_in_records_user_date"`
-	SignDate     LocalDate `gorm:"column:sign_date;type:date;not null;uniqueIndex:uk_check_in_records_user_date"`
-	RedeemCodeID uint64    `gorm:"column:redeem_code_id;not null;index:idx_check_in_records_code_id"`
-	CreatedAt    JSONTime  `gorm:"column:created_at;autoCreateTime"`
+	ID            uint64    `gorm:"primaryKey;column:id"`
+	UserID        string    `gorm:"column:user_id;size:64;not null;uniqueIndex:uk_check_in_records_user_date"`
+	SignDate      LocalDate `gorm:"column:sign_date;type:date;not null;uniqueIndex:uk_check_in_records_user_date"`
+	RedeemCodeID  uint64    `gorm:"column:redeem_code_id;not null;index:idx_check_in_records_code_id"`
+	CheckInMethod string    `gorm:"column:check_in_method;size:20;not null;default:direct"`
+	PlatformType  string    `gorm:"column:platform_type;size:40;not null;default:''"`
+	CreatedAt     JSONTime  `gorm:"column:created_at;autoCreateTime"`
 }
 
 func (CheckInRecord) TableName() string {
@@ -80,6 +82,34 @@ func (l *DailyCheckInLimit) BeforeCreate(*gorm.DB) error {
 }
 
 func (l *DailyCheckInLimit) BeforeUpdate(*gorm.DB) error {
+	l.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
+type DailyCheckInMethodLimit struct {
+	SignDate      LocalDate `gorm:"primaryKey;column:sign_date;type:date"`
+	CheckInMethod string    `gorm:"primaryKey;column:check_in_method;size:20"`
+	CheckedCount  int       `gorm:"column:checked_count;not null"`
+	CreatedAt     JSONTime  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt     JSONTime  `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (DailyCheckInMethodLimit) TableName() string {
+	return "daily_checkin_method_limits"
+}
+
+func (l *DailyCheckInMethodLimit) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if l.CreatedAt.Time.IsZero() {
+		l.CreatedAt = now
+	}
+	if l.UpdatedAt.Time.IsZero() {
+		l.UpdatedAt = now
+	}
+	return nil
+}
+
+func (l *DailyCheckInMethodLimit) BeforeUpdate(*gorm.DB) error {
 	l.UpdatedAt = JSONTime{Time: time.Now()}
 	return nil
 }

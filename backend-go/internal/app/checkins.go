@@ -19,13 +19,50 @@ func (app *App) checkIn(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
+	if strings.TrimSpace(req.PlatformType) != "" || strings.TrimSpace(req.Platform) != "" {
+		app.respondSocialCheckIn(c, req)
+		return
+	}
 	userID := strings.TrimSpace(req.UserID)
 	if userID == "" {
 		badRequest(c, "userId must not be blank")
 		return
 	}
 
-	app.respondCheckIn(c, userID, nil)
+	app.respondCheckIn(c, userID, nil, checkInMethodDirect, "")
+}
+
+func (app *App) socialCheckIn(c *gin.Context) {
+	var req CheckInRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	app.respondSocialCheckIn(c, req)
+}
+
+func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
+	platform := strings.TrimSpace(req.PlatformType)
+	if platform == "" {
+		platform = strings.TrimSpace(req.Platform)
+	}
+	platform, externalUserID, err := normalizeSocialBinding(SocialBindingRequest{Platform: platform, UserID: req.UserID})
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+
+	var binding SocialAccountBinding
+	if err := app.db.Where("platform = ? AND external_user_id = ?", platform, externalUserID).First(&binding).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, APIError{Message: "social account binding not found"})
+			return
+		}
+		serverError(c, err)
+		return
+	}
+
+	canonicalUserID := strconv.FormatInt(binding.UserID, 10)
+	app.respondCheckIn(c, canonicalUserID, &binding.UserID, checkInMethodSocial, platform)
 }
 
 func (app *App) getUserCheckInStatus(c *gin.Context) {
@@ -59,10 +96,10 @@ func (app *App) userCheckIn(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
 		return
 	}
-	app.respondCheckIn(c, strconv.FormatInt(user.ID, 10), &user.ID)
+	app.respondCheckIn(c, strconv.FormatInt(user.ID, 10), &user.ID, checkInMethodDirect, "")
 }
 
-func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *int64) {
+func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *int64, checkInMethod, platformType string) {
 	today := Today()
 	if response, found, err := app.todayCheckInResponse(userID, today); err != nil {
 		serverError(c, err)
@@ -72,7 +109,7 @@ func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *
 		return
 	}
 
-	response, err := app.createCheckIn(c.Request.Context(), userID, today, autoRedeemUserID)
+	response, err := app.createCheckIn(c.Request.Context(), userID, today, autoRedeemUserID, checkInMethod, platformType)
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || isDuplicateEntry(err) {
 			if response, found, err := app.todayCheckInResponse(userID, today); err == nil && found {
@@ -109,16 +146,16 @@ func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInRes
 	if err := app.db.First(&code, existingRecord.RedeemCodeID).Error; err != nil {
 		return CheckInResponse{}, false, err
 	}
-	return toCheckInResponse(code, true, "今日已签到"), true, nil
+	return toCheckInResponse(code, true, "already checked in today", existingRecord.CheckInMethod, existingRecord.PlatformType), true, nil
 }
 
-func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate, autoRedeemUserID *int64) (CheckInResponse, error) {
+func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate, autoRedeemUserID *int64, checkInMethod, platformType string) (CheckInResponse, error) {
 	var response CheckInResponse
 	err := app.db.Transaction(func(tx *gorm.DB) error {
-		if err := app.consumeDailyQuota(tx, today); err != nil {
+		if err := app.consumeDailyQuota(tx, today, checkInMethod); err != nil {
 			return err
 		}
-		drawnAmount, err := app.drawAmount()
+		drawnAmount, err := app.drawAmount(checkInMethod)
 		if err != nil {
 			return err
 		}
@@ -128,7 +165,11 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 		remoteCode := ""
 		if autoRedeemUserID != nil {
 			remoteCode = sub2APIIdempotencyKey(userID, today, drawnAmount)
-			if err := app.createAndRedeemSub2APIBalance(ctx, *autoRedeemUserID, drawnAmount, remoteCode, "Daily check-in reward"); err != nil {
+			notes := "Daily check-in reward"
+			if checkInMethod == checkInMethodSocial {
+				notes = "Social check-in reward: " + platformType
+			}
+			if err := app.addSub2APIUserBalance(ctx, *autoRedeemUserID, drawnAmount, remoteCode, notes); err != nil {
 				return err
 			}
 			status = statusUsed
@@ -151,17 +192,34 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 		if err := tx.Create(&savedCode).Error; err != nil {
 			return err
 		}
-		record := CheckInRecord{UserID: userID, SignDate: today, RedeemCodeID: savedCode.ID}
+		record := CheckInRecord{
+			UserID:        userID,
+			SignDate:      today,
+			RedeemCodeID:  savedCode.ID,
+			CheckInMethod: checkInMethod,
+			PlatformType:  platformType,
+		}
 		if err := tx.Create(&record).Error; err != nil {
 			return err
 		}
-		response = toCheckInResponse(savedCode, false, message)
+		response = toCheckInResponse(savedCode, false, message, checkInMethod, platformType)
 		return nil
 	})
 	return response, err
 }
 
-func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate) error {
+func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod string) error {
+	mode, err := app.getDailyLimitMode()
+	if err != nil {
+		return err
+	}
+	if mode == "separate" {
+		return app.consumeMethodDailyQuota(tx, today, checkInMethod)
+	}
+	return app.consumeSharedDailyQuota(tx, today)
+}
+
+func (app *App) consumeSharedDailyQuota(tx *gorm.DB, today LocalDate) error {
 	dailyMaxUsers, err := app.getDailyMaxUsers()
 	if err != nil {
 		return err
@@ -188,6 +246,58 @@ func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate) error {
 	}).Error
 }
 
+func (app *App) consumeMethodDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod string) error {
+	if checkInMethod == "" {
+		checkInMethod = checkInMethodDirect
+	}
+	dailyMaxUsers, err := app.dailyMaxUsersForMethod(checkInMethod)
+	if err != nil {
+		return err
+	}
+	if dailyMaxUsers <= 0 {
+		return businessConflict("daily check-in quota is full")
+	}
+
+	var existingCount int64
+	if err := tx.Model(&CheckInRecord{}).
+		Where("sign_date = ? AND check_in_method = ?", today, checkInMethod).
+		Count(&existingCount).Error; err != nil {
+		return err
+	}
+
+	limit := DailyCheckInMethodLimit{SignDate: today, CheckInMethod: checkInMethod, CheckedCount: int(existingCount)}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&limit).Error; err != nil {
+		return err
+	}
+
+	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("sign_date = ? AND check_in_method = ?", today, checkInMethod).
+		First(&limit).Error
+	if err != nil {
+		return err
+	}
+	if limit.CheckedCount >= dailyMaxUsers {
+		return businessConflict("daily check-in quota is full")
+	}
+	return tx.Model(&DailyCheckInMethodLimit{}).
+		Where("sign_date = ? AND check_in_method = ?", today, checkInMethod).
+		Updates(map[string]any{
+			"checked_count": gorm.Expr("checked_count + 1"),
+			"updated_at":    time.Now(),
+		}).Error
+}
+
+func (app *App) dailyMaxUsersForMethod(checkInMethod string) (int, error) {
+	shared, err := app.getDailyMaxUsers()
+	if err != nil {
+		return 0, err
+	}
+	if checkInMethod == checkInMethodSocial {
+		return app.getMethodDailyMaxUsers(socialDailyMaxUsersKey, shared)
+	}
+	return app.getMethodDailyMaxUsers(directDailyMaxUsersKey, shared)
+}
+
 func assignRandomAvailable(tx *gorm.DB, userID string, today LocalDate, amount *Amount) (int64, error) {
 	statement := `UPDATE redeem_codes
 		SET user_id = ?, sign_date = ?, status = 'ASSIGNED', updated_at = CURRENT_TIMESTAMP(6)
@@ -202,7 +312,10 @@ func assignRandomAvailable(tx *gorm.DB, userID string, today LocalDate, amount *
 	return result.RowsAffected, result.Error
 }
 
-func toCheckInResponse(code RedeemCode, alreadyCheckedIn bool, message string) CheckInResponse {
+func toCheckInResponse(code RedeemCode, alreadyCheckedIn bool, message, checkInMethod, platformType string) CheckInResponse {
+	if checkInMethod == "" {
+		checkInMethod = checkInMethodDirect
+	}
 	return CheckInResponse{
 		Success:          true,
 		AlreadyCheckedIn: alreadyCheckedIn,
@@ -210,6 +323,8 @@ func toCheckInResponse(code RedeemCode, alreadyCheckedIn bool, message string) C
 		SignDate:         code.SignDate,
 		Code:             code.Code,
 		Amount:           code.Amount,
+		CheckInMethod:    checkInMethod,
+		PlatformType:     platformType,
 		Message:          message,
 	}
 }

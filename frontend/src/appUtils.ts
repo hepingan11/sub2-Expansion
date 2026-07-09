@@ -1,6 +1,7 @@
 import React from 'react';
 
 import {
+  AdminSettings,
   bindSocialAccount,
   PrizeTierSetting,
   RechargeActivityPayload,
@@ -126,8 +127,6 @@ export function formatToday() {
 
 export function sectionTitle(section: DashboardSection) {
   switch (section) {
-    case 'home':
-      return '首页';
     case 'checkins':
       return '签到管理';
     case 'favorites':
@@ -142,7 +141,7 @@ export function sectionTitle(section: DashboardSection) {
 }
 
 export function isDashboardSection(value: unknown): value is DashboardSection {
-  return ['home', 'checkins', 'favorites', 'recharge', 'rates', 'system'].includes(String(value));
+  return ['checkins', 'favorites', 'recharge', 'rates', 'system'].includes(String(value));
 }
 
 export function normalizeStats(stats: Stats): Stats {
@@ -259,15 +258,43 @@ export function prizeTierTotal(drafts: { amount: string; probability: string }[]
 export function settingsChanged(
   dailyMaxUsers: number,
   dailyMaxUsersDraft: string,
-  prizeTiers: PrizeTierSetting[],
-  prizeTierDrafts: { amount: string; probability: string }[],
+  dailyLimitMode: 'shared' | 'separate',
+  dailyLimitModeDraft: 'shared' | 'separate',
+  directDailyMaxUsers: number,
+  directDailyMaxUsersDraft: string,
+  socialDailyMaxUsers: number,
+  socialDailyMaxUsersDraft: string,
+  directPrizeTiers: PrizeTierSetting[],
+  directPrizeTierDrafts: { amount: string; probability: string }[],
+  socialPrizeTiers: PrizeTierSetting[],
+  socialPrizeTierDrafts: { amount: string; probability: string }[],
+  admin: AdminSettings,
+  adminDraft: AdminSettings,
   sub2api: Sub2APISettings,
   sub2apiDraft: Sub2APISettings
 ) {
   if (dailyMaxUsersDraft !== String(dailyMaxUsers)) {
     return true;
   }
-  if (JSON.stringify(toPrizeTierDrafts(prizeTiers)) !== JSON.stringify(prizeTierDrafts)) {
+  if (dailyLimitModeDraft !== dailyLimitMode) {
+    return true;
+  }
+  if (directDailyMaxUsersDraft !== String(directDailyMaxUsers)) {
+    return true;
+  }
+  if (socialDailyMaxUsersDraft !== String(socialDailyMaxUsers)) {
+    return true;
+  }
+  if (JSON.stringify(toPrizeTierDrafts(directPrizeTiers)) !== JSON.stringify(directPrizeTierDrafts)) {
+    return true;
+  }
+  if (JSON.stringify(toPrizeTierDrafts(socialPrizeTiers)) !== JSON.stringify(socialPrizeTierDrafts)) {
+    return true;
+  }
+  if (adminDraft.username !== admin.username) {
+    return true;
+  }
+  if ((adminDraft.password ?? '') !== '') {
     return true;
   }
   return JSON.stringify(toSub2APIDraft(sub2api)) !== JSON.stringify(sub2apiDraft);

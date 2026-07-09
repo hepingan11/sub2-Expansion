@@ -65,7 +65,25 @@ func (app *App) listSocialBindingsForUser(userID int64) ([]SocialAccountBinding,
 
 func (app *App) bindSocialAccountForUser(userID int64, platform, externalUserID string) (SocialBindingResponse, error) {
 	var binding SocialAccountBinding
-	err := app.db.Where("user_id = ? AND platform = ?", userID, platform).First(&binding).Error
+	err := app.db.Where("platform = ? AND external_user_id = ?", platform, externalUserID).First(&binding).Error
+	if err == nil {
+		if binding.UserID != userID {
+			return SocialBindingResponse{}, businessConflict("social account is already bound to another user")
+		}
+		return SocialBindingResponse{
+			ID:             binding.ID,
+			Platform:       binding.Platform,
+			ExternalUserID: binding.ExternalUserID,
+			Bound:          false,
+			AlreadyBound:   true,
+			Message:        "social account already bound to this user",
+		}, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return SocialBindingResponse{}, err
+	}
+
+	err = app.db.Where("user_id = ? AND platform = ?", userID, platform).First(&binding).Error
 	if err == nil {
 		return SocialBindingResponse{
 			ID:             binding.ID,
@@ -80,22 +98,21 @@ func (app *App) bindSocialAccountForUser(userID int64, platform, externalUserID 
 		return SocialBindingResponse{}, err
 	}
 
-	err = app.db.Where("platform = ? AND external_user_id = ?", platform, externalUserID).First(&binding).Error
-	if err == nil {
-		return SocialBindingResponse{}, businessConflict("social account is already bound to another user")
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return SocialBindingResponse{}, err
-	}
-
 	binding = SocialAccountBinding{
 		UserID:         userID,
 		Platform:       platform,
 		ExternalUserID: externalUserID,
 	}
 	if err := app.db.Create(&binding).Error; err != nil {
-		if isDuplicateEntry(err) {
+		switch duplicateConstraintName(err) {
+		case "uk_social_bindings_platform_external":
+			return SocialBindingResponse{}, businessConflict("social account is already bound to another user")
+		case "uk_social_bindings_user_platform":
 			return SocialBindingResponse{}, businessConflict("social account binding already exists")
+		default:
+			if isDuplicateEntry(err) {
+				return SocialBindingResponse{}, businessConflict("social account binding already exists")
+			}
 		}
 		return SocialBindingResponse{}, err
 	}

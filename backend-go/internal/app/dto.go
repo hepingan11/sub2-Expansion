@@ -55,7 +55,9 @@ type AmountStatEntry struct {
 }
 
 type CheckInRequest struct {
-	UserID string `json:"userId"`
+	UserID       string `json:"userId"`
+	PlatformType string `json:"platformType"`
+	Platform     string `json:"platform"`
 }
 
 type CheckInResponse struct {
@@ -65,6 +67,8 @@ type CheckInResponse struct {
 	SignDate         *LocalDate `json:"signDate"`
 	Code             string     `json:"code"`
 	Amount           Amount     `json:"amount"`
+	CheckInMethod    string     `json:"checkInMethod"`
+	PlatformType     string     `json:"platformType,omitempty"`
 	Message          string     `json:"message"`
 }
 
@@ -86,15 +90,33 @@ type PrizeTier struct {
 }
 
 type CheckInSettingsResponse struct {
-	DailyMaxUsers int           `json:"dailyMaxUsers"`
-	PrizeTiers    []PrizeTier   `json:"prizeTiers"`
-	Sub2API       Sub2APIConfig `json:"sub2api"`
+	DailyMaxUsers       int           `json:"dailyMaxUsers"`
+	DailyLimitMode      string        `json:"dailyLimitMode"`
+	DirectDailyMaxUsers int           `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers int           `json:"socialDailyMaxUsers"`
+	PrizeTiers          []PrizeTier   `json:"prizeTiers"`
+	DirectPrizeTiers    []PrizeTier   `json:"directPrizeTiers"`
+	SocialPrizeTiers    []PrizeTier   `json:"socialPrizeTiers"`
+	Admin               AdminConfig   `json:"admin"`
+	Sub2API             Sub2APIConfig `json:"sub2api"`
 }
 
 type UpdateCheckInSettingsRequest struct {
-	DailyMaxUsers int           `json:"dailyMaxUsers"`
-	PrizeTiers    []PrizeTier   `json:"prizeTiers"`
-	Sub2API       Sub2APIConfig `json:"sub2api"`
+	DailyMaxUsers       int           `json:"dailyMaxUsers"`
+	DailyLimitMode      string        `json:"dailyLimitMode"`
+	DirectDailyMaxUsers int           `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers int           `json:"socialDailyMaxUsers"`
+	PrizeTiers          []PrizeTier   `json:"prizeTiers"`
+	DirectPrizeTiers    []PrizeTier   `json:"directPrizeTiers"`
+	SocialPrizeTiers    []PrizeTier   `json:"socialPrizeTiers"`
+	Admin               AdminConfig   `json:"admin"`
+	Sub2API             Sub2APIConfig `json:"sub2api"`
+}
+
+type AdminConfig struct {
+	Username    string `json:"username"`
+	Password    string `json:"password,omitempty"`
+	PasswordSet bool   `json:"passwordSet"`
 }
 
 type Sub2APIConfig struct {
@@ -175,6 +197,22 @@ type ClaimRechargeRewardResponse struct {
 	ClaimID      uint64 `json:"claimId"`
 	RedeemCode   string `json:"redeemCode"`
 	RewardAmount Amount `json:"rewardAmount"`
+}
+
+type AdminRechargeRewardClaimResponse struct {
+	ID              uint64   `json:"id"`
+	ActivityID      uint64   `json:"activityId"`
+	ActivityName    string   `json:"activityName"`
+	TierID          uint64   `json:"tierId"`
+	TierSort        int      `json:"tierSort"`
+	UserID          int64    `json:"userId"`
+	ThresholdAmount Amount   `json:"thresholdAmount"`
+	RewardAmount    Amount   `json:"rewardAmount"`
+	Status          string   `json:"status"`
+	RedeemCode      string   `json:"redeemCode"`
+	ErrorMessage    string   `json:"errorMessage"`
+	CreatedAt       JSONTime `json:"createdAt"`
+	UpdatedAt       JSONTime `json:"updatedAt"`
 }
 
 type PageResponse[T any] struct {

@@ -16,15 +16,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 const (
 	groupRateSourcePolling       = "polling"
 	groupRateSourceManualRefresh = "manual_refresh"
+	groupRateSourceManualEdit    = "manual"
 	defaultGroupRateRefreshSec   = 300
 	minGroupRateRefreshSec       = 60
 	maxGroupRateRefreshSec       = 86400
+	groupRateLogListLimit        = 200
 )
 
 type Sub2APIGroupRateMonitorSettings struct {
@@ -38,6 +41,7 @@ type Sub2APIGroupRateMonitorResponse struct {
 	Settings Sub2APIGroupRateMonitorSettings `json:"settings"`
 	Groups   []Sub2APIGroupRateGroupResponse `json:"groups"`
 	Series   []Sub2APIGroupRateSeries        `json:"series"`
+	Logs     []Sub2APIGroupRateLogResponse   `json:"logs"`
 }
 
 type Sub2APIGroupRateGroupResponse struct {
@@ -61,6 +65,36 @@ type Sub2APIGroupRatePoint struct {
 	Rate float64 `json:"rate"`
 }
 
+type Sub2APIGroupRateLogResponse struct {
+	ID            uint64  `json:"id"`
+	GroupID       string  `json:"groupId"`
+	GroupName     string  `json:"groupName"`
+	OldRate       float64 `json:"oldRate"`
+	NewRate       float64 `json:"newRate"`
+	Source        string  `json:"source"`
+	PublicVisible bool    `json:"publicVisible"`
+	CreatedAt     string  `json:"createdAt"`
+}
+
+type UpdateSub2APIGroupRateRequest struct {
+	RateMultiplier decimal.Decimal `json:"rateMultiplier"`
+	GroupName      string          `json:"groupName"`
+	CreatedAt      string          `json:"createdAt"`
+}
+
+type UpdateSub2APIGroupRateLogRequest struct {
+	OldRate       decimal.Decimal `json:"oldRate"`
+	NewRate       decimal.Decimal `json:"newRate"`
+	CreatedAt     string          `json:"createdAt"`
+	PublicVisible *bool           `json:"publicVisible"`
+}
+
+type CreateSub2APIGroupRateLogRequest struct {
+	RateMultiplier decimal.Decimal `json:"rateMultiplier"`
+	CreatedAt      string          `json:"createdAt"`
+	PublicVisible  *bool           `json:"publicVisible"`
+}
+
 type sub2APIGroupRate struct {
 	GroupID        string
 	GroupName      string
@@ -74,17 +108,7 @@ func (app *App) getSub2APIGroupRateMonitor(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
-	groups, err := app.listSub2APIGroupRateGroups(settings)
-	if err != nil {
-		serverError(c, err)
-		return
-	}
-	series, err := app.buildSub2APIGroupRateSeries(settings, false, 30)
-	if err != nil {
-		serverError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, Sub2APIGroupRateMonitorResponse{Settings: settings, Groups: groups, Series: series})
+	app.respondSub2APIGroupRateMonitor(c, settings)
 }
 
 func (app *App) updateSub2APIGroupRateMonitor(c *gin.Context) {
@@ -97,6 +121,10 @@ func (app *App) updateSub2APIGroupRateMonitor(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	app.respondSub2APIGroupRateMonitor(c, settings)
+}
+
+func (app *App) respondSub2APIGroupRateMonitor(c *gin.Context, settings Sub2APIGroupRateMonitorSettings) {
 	groups, err := app.listSub2APIGroupRateGroups(settings)
 	if err != nil {
 		serverError(c, err)
@@ -107,7 +135,12 @@ func (app *App) updateSub2APIGroupRateMonitor(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, Sub2APIGroupRateMonitorResponse{Settings: settings, Groups: groups, Series: series})
+	logs, err := app.listSub2APIGroupRateLogs(groupRateLogListLimit)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, Sub2APIGroupRateMonitorResponse{Settings: settings, Groups: groups, Series: series, Logs: logs})
 }
 
 func (app *App) refreshSub2APIGroupRates(c *gin.Context) {
@@ -116,6 +149,159 @@ func (app *App) refreshSub2APIGroupRates(c *gin.Context) {
 		return
 	}
 	app.getSub2APIGroupRateMonitor(c)
+}
+
+func (app *App) updateSub2APIGroupRate(c *gin.Context) {
+	groupID := strings.TrimSpace(c.Param("groupId"))
+	if groupID == "" {
+		badRequest(c, "invalid groupId")
+		return
+	}
+	var req UpdateSub2APIGroupRateRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	if req.RateMultiplier.Cmp(decimal.Zero) <= 0 {
+		badRequest(c, "rateMultiplier must be greater than 0")
+		return
+	}
+	changedAt, err := parseGroupRateTimestamp(req.CreatedAt)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	if err := app.setSub2APIGroupRateManually(groupID, req.GroupName, req.RateMultiplier.Round(6), changedAt); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, APIError{Message: "group rate snapshot not found"})
+			return
+		}
+		serverError(c, err)
+		return
+	}
+	settings, err := app.loadSub2APIGroupRateMonitorSettings()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	app.respondSub2APIGroupRateMonitor(c, settings)
+}
+
+func (app *App) updateSub2APIGroupRateLog(c *gin.Context) {
+	id, ok := pathUint64(c, "id")
+	if !ok {
+		return
+	}
+	var req UpdateSub2APIGroupRateLogRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	if req.OldRate.Cmp(decimal.Zero) <= 0 || req.NewRate.Cmp(decimal.Zero) <= 0 {
+		badRequest(c, "oldRate and newRate must be greater than 0")
+		return
+	}
+	changedAt, err := parseGroupRateTimestamp(req.CreatedAt)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	updates := map[string]any{
+		"old_rate":   req.OldRate.Round(6),
+		"new_rate":   req.NewRate.Round(6),
+		"created_at": changedAt.Time,
+	}
+	if req.PublicVisible != nil {
+		updates["public_visible"] = *req.PublicVisible
+	}
+	result := app.db.Model(&Sub2APIGroupRateLog{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		serverError(c, result.Error)
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, APIError{Message: "group rate log not found"})
+		return
+	}
+	settings, err := app.loadSub2APIGroupRateMonitorSettings()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	app.respondSub2APIGroupRateMonitor(c, settings)
+}
+
+func (app *App) listSub2APIGroupRateLogsForGroup(c *gin.Context) {
+	groupID := strings.TrimSpace(c.Param("groupId"))
+	if groupID == "" {
+		badRequest(c, "invalid groupId")
+		return
+	}
+	logs, err := app.listSub2APIGroupRateLogsByGroup(groupID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, logs)
+}
+
+func (app *App) createSub2APIGroupRateLog(c *gin.Context) {
+	groupID := strings.TrimSpace(c.Param("groupId"))
+	if groupID == "" {
+		badRequest(c, "invalid groupId")
+		return
+	}
+	var req CreateSub2APIGroupRateLogRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	if req.RateMultiplier.Cmp(decimal.Zero) <= 0 {
+		badRequest(c, "rateMultiplier must be greater than 0")
+		return
+	}
+	changedAt, err := parseGroupRateTimestamp(req.CreatedAt)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	if err := app.createSub2APIGroupRateLogEntry(groupID, req.RateMultiplier.Round(6), changedAt, req.PublicVisible); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, APIError{Message: "group rate snapshot not found"})
+			return
+		}
+		serverError(c, err)
+		return
+	}
+	logs, err := app.listSub2APIGroupRateLogsByGroup(groupID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, logs)
+}
+
+func (app *App) deleteSub2APIGroupRateLog(c *gin.Context) {
+	id, ok := pathUint64(c, "id")
+	if !ok {
+		return
+	}
+	var entry Sub2APIGroupRateLog
+	if err := app.db.First(&entry, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, APIError{Message: "group rate log not found"})
+			return
+		}
+		serverError(c, err)
+		return
+	}
+	if err := app.db.Delete(&Sub2APIGroupRateLog{}, "id = ?", id).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	logs, err := app.listSub2APIGroupRateLogsByGroup(entry.GroupID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, logs)
 }
 
 func (app *App) getPublicSub2APIGroupRateSeries(c *gin.Context) {
@@ -224,6 +410,105 @@ func (app *App) syncSub2APIGroupRates(ctx context.Context, source string) error 
 		}
 	}
 	return nil
+}
+
+func (app *App) setSub2APIGroupRateManually(groupID, groupName string, rate decimal.Decimal, changedAt JSONTime) error {
+	app.sub2APIGroupRateMonitorMu.Lock()
+	defer app.sub2APIGroupRateMonitorMu.Unlock()
+
+	settings, err := app.loadSub2APIGroupRateMonitorSettings()
+	if err != nil {
+		return err
+	}
+	public := stringSet(settings.PublicGroupIDs)
+
+	var snapshot Sub2APIGroupRateSnapshot
+	if err := app.db.Where("group_id = ?", groupID).First(&snapshot).Error; err != nil {
+		return err
+	}
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		groupName = snapshot.GroupName
+	}
+
+	return app.db.Transaction(func(tx *gorm.DB) error {
+		if !snapshot.RateMultiplier.Equal(rate) {
+			logEntry := Sub2APIGroupRateLog{
+				GroupID:       snapshot.GroupID,
+				GroupName:     groupName,
+				OldRate:       snapshot.RateMultiplier,
+				NewRate:       rate,
+				Source:        groupRateSourceManualEdit,
+				PublicVisible: public[snapshot.GroupID],
+				CreatedAt:     changedAt,
+			}
+			if err := tx.Create(&logEntry).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Model(&Sub2APIGroupRateSnapshot{}).Where("group_id = ?", groupID).Updates(map[string]any{
+			"group_name":      groupName,
+			"rate_multiplier": rate,
+			"last_seen_at":    changedAt.Time,
+			"updated_at":      time.Now(),
+		}).Error
+	})
+}
+
+func (app *App) createSub2APIGroupRateLogEntry(groupID string, rate decimal.Decimal, changedAt JSONTime, publicVisible *bool) error {
+	app.sub2APIGroupRateMonitorMu.Lock()
+	defer app.sub2APIGroupRateMonitorMu.Unlock()
+
+	settings, err := app.loadSub2APIGroupRateMonitorSettings()
+	if err != nil {
+		return err
+	}
+	public := stringSet(settings.PublicGroupIDs)
+
+	var snapshot Sub2APIGroupRateSnapshot
+	if err := app.db.Where("group_id = ?", groupID).First(&snapshot).Error; err != nil {
+		return err
+	}
+	oldRate := snapshot.RateMultiplier
+	var previous Sub2APIGroupRateLog
+	if err := app.db.
+		Where("group_id = ? AND created_at <= ?", groupID, changedAt.Time).
+		Order("created_at DESC, id DESC").
+		Limit(1).
+		Find(&previous).Error; err != nil {
+		return err
+	}
+	if previous.ID > 0 {
+		oldRate = previous.NewRate
+	}
+
+	visible := public[groupID]
+	if publicVisible != nil {
+		visible = *publicVisible
+	}
+
+	return app.db.Transaction(func(tx *gorm.DB) error {
+		logEntry := Sub2APIGroupRateLog{
+			GroupID:       snapshot.GroupID,
+			GroupName:     snapshot.GroupName,
+			OldRate:       oldRate,
+			NewRate:       rate,
+			Source:        groupRateSourceManualEdit,
+			PublicVisible: visible,
+			CreatedAt:     changedAt,
+		}
+		if err := tx.Create(&logEntry).Error; err != nil {
+			return err
+		}
+		if !changedAt.Time.Before(snapshot.LastSeenAt.Time) {
+			return tx.Model(&Sub2APIGroupRateSnapshot{}).Where("group_id = ?", groupID).Updates(map[string]any{
+				"rate_multiplier": rate,
+				"last_seen_at":    changedAt.Time,
+				"updated_at":      time.Now(),
+			}).Error
+		}
+		return nil
+	})
 }
 
 func (app *App) fetchSub2APIGroupRates(ctx context.Context) ([]sub2APIGroupRate, error) {
@@ -362,6 +647,54 @@ func (app *App) listSub2APIGroupRateGroups(settings Sub2APIGroupRateMonitorSetti
 	return groups, nil
 }
 
+func (app *App) listSub2APIGroupRateLogs(limit int) ([]Sub2APIGroupRateLogResponse, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = groupRateLogListLimit
+	}
+	var logs []Sub2APIGroupRateLog
+	if err := app.db.Order("created_at DESC, id DESC").Limit(limit).Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	result := make([]Sub2APIGroupRateLogResponse, 0, len(logs))
+	for _, entry := range logs {
+		result = append(result, Sub2APIGroupRateLogResponse{
+			ID:            entry.ID,
+			GroupID:       entry.GroupID,
+			GroupName:     entry.GroupName,
+			OldRate:       decimalToFloat(entry.OldRate),
+			NewRate:       decimalToFloat(entry.NewRate),
+			Source:        entry.Source,
+			PublicVisible: entry.PublicVisible,
+			CreatedAt:     formatJSONTime(entry.CreatedAt),
+		})
+	}
+	return result, nil
+}
+
+func (app *App) listSub2APIGroupRateLogsByGroup(groupID string) ([]Sub2APIGroupRateLogResponse, error) {
+	var logs []Sub2APIGroupRateLog
+	if err := app.db.
+		Where("group_id = ?", groupID).
+		Order("created_at DESC, id DESC").
+		Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	result := make([]Sub2APIGroupRateLogResponse, 0, len(logs))
+	for _, entry := range logs {
+		result = append(result, Sub2APIGroupRateLogResponse{
+			ID:            entry.ID,
+			GroupID:       entry.GroupID,
+			GroupName:     entry.GroupName,
+			OldRate:       decimalToFloat(entry.OldRate),
+			NewRate:       decimalToFloat(entry.NewRate),
+			Source:        entry.Source,
+			PublicVisible: entry.PublicVisible,
+			CreatedAt:     formatJSONTime(entry.CreatedAt),
+		})
+	}
+	return result, nil
+}
+
 func (app *App) buildSub2APIGroupRateSeries(settings Sub2APIGroupRateMonitorSettings, publicOnly bool, days int) ([]Sub2APIGroupRateSeries, error) {
 	if days <= 0 || days > 365 {
 		days = 30
@@ -403,6 +736,9 @@ func (app *App) buildSub2APIGroupRateSeries(settings Sub2APIGroupRateMonitorSett
 	var logs []Sub2APIGroupRateLog
 	query := app.db.Where("group_id IN ? AND created_at >= ?", groupIDs, windowStart).
 		Order("group_id ASC, created_at ASC, id ASC")
+	if publicOnly {
+		query = query.Where("public_visible = ?", true)
+	}
 	if err := query.Find(&logs).Error; err != nil {
 		return nil, err
 	}
@@ -439,6 +775,20 @@ func appendGroupRatePoint(series *Sub2APIGroupRateSeries, point Sub2APIGroupRate
 		return
 	}
 	series.Points = append(series.Points, point)
+}
+
+func parseGroupRateTimestamp(value string) (JSONTime, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return JSONTime{Time: time.Now()}, nil
+	}
+	layouts := []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02 15:04:05", "2006-01-02"}
+	for _, layout := range layouts {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return JSONTime{Time: parsed}, nil
+		}
+	}
+	return JSONTime{}, fmt.Errorf("invalid change time: %s", value)
 }
 
 func parseSub2APIGroupRates(raw json.RawMessage) ([]sub2APIGroupRate, error) {
