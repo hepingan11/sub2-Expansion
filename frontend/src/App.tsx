@@ -48,6 +48,7 @@ import {
   fetchRechargeRewardClaims,
   fetchSub2APIGroupRateMonitor,
   fetchSub2APIGroupRateLogs,
+  fetchSystemUpdateCheck,
   fetchUserCheckInStatus,
   fetchUserRechargeRewards,
   fetchStats,
@@ -69,6 +70,7 @@ import {
   Sub2APIGroupRateSeries,
   Sub2APISettings,
   Sub2APIUserProfile,
+  SystemUpdateCheck,
   updateCheckInSettings,
   updateCode,
   updateFavoriteSite,
@@ -76,6 +78,7 @@ import {
   updateSub2APIGroupRateMonitor,
   updateSub2APIGroupRateLog,
   refreshSub2APIGroupRates,
+  runSystemUpdate,
   UserRechargeRewards,
   userCheckIn,
   userLogin,
@@ -711,6 +714,10 @@ function Dashboard({
   const [groupRateLogDrafts, setGroupRateLogDrafts] = useState<Record<number, { oldRate: string; newRate: string; createdAt: string; publicVisible: boolean }>>({});
   const [groupRateEditingKey, setGroupRateEditingKey] = useState<string | null>(null);
   const [editingGroupRate, setEditingGroupRate] = useState<Sub2APIGroupRateGroup | null>(null);
+  const [systemUpdate, setSystemUpdate] = useState<SystemUpdateCheck | null>(null);
+  const [systemUpdateChecking, setSystemUpdateChecking] = useState(false);
+  const [systemUpdating, setSystemUpdating] = useState(false);
+  const [systemUpdateOutput, setSystemUpdateOutput] = useState('');
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -849,6 +856,48 @@ function Dashboard({
     }
   }
 
+  async function checkSystemUpdate(showNotice = false) {
+    setSystemUpdateChecking(true);
+    setError('');
+    try {
+      const result = await fetchSystemUpdateCheck();
+      setSystemUpdate(result);
+      if (showNotice) {
+        notifySuccess(result.message || '版本检测完成');
+      }
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '检测版本更新失败');
+    } finally {
+      setSystemUpdateChecking(false);
+    }
+  }
+
+  async function updateSystemVersion() {
+    if (!systemUpdate?.updateEnabled) {
+      notifyError('未配置 SYSTEM_UPDATE_COMMAND，无法在后台直接执行更新');
+      return;
+    }
+    if (!await confirmDialog({
+      title: '执行版本更新',
+      message: '确认在后端容器中执行系统更新命令？更新过程中服务可能短暂不可用。',
+      confirmText: '执行更新'
+    })) {
+      return;
+    }
+    setSystemUpdating(true);
+    setSystemUpdateOutput('');
+    try {
+      const result = await runSystemUpdate();
+      setSystemUpdateOutput(result.output || result.message);
+      notifySuccess(result.message || '更新命令已执行');
+      await checkSystemUpdate(false);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '执行更新失败');
+    } finally {
+      setSystemUpdating(false);
+    }
+  }
+
   function applyGroupRateMonitor(data: Sub2APIGroupRateMonitor) {
     setGroupRateMonitor(data);
     setGroupRateDraft(data.settings);
@@ -879,6 +928,9 @@ function Dashboard({
     }
     if (activeSection === 'rates') {
       loadGroupRateMonitor();
+    }
+    if (activeSection === 'system') {
+      checkSystemUpdate(false);
     }
   }, [activeSection]);
 
@@ -2055,6 +2107,60 @@ function Dashboard({
               {settingsSaving ? '保存中...' : '保存'}
             </button>
             {settingsSaved && <span className="settings-saved">已保存</span>}
+          </div>
+
+          <div className="sub2api-editor standalone system-update-panel">
+            <div className="tier-editor-head">
+              <span>版本更新</span>
+              <div className="system-update-actions">
+                {systemUpdate?.releaseUrl && (
+                  <a className="ghost-btn" href={systemUpdate.releaseUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink size={16} />
+                    Release
+                  </a>
+                )}
+                <button className="ghost-btn" type="button" onClick={() => checkSystemUpdate(true)} disabled={systemUpdateChecking}>
+                  <CheckCircle2 size={17} />
+                  {systemUpdateChecking ? '检测中...' : '检测更新'}
+                </button>
+                <button
+                  className="primary-btn"
+                  type="button"
+                  onClick={updateSystemVersion}
+                  disabled={systemUpdating || !systemUpdate?.updateAvailable || !systemUpdate?.updateEnabled}
+                  title={systemUpdate?.updateEnabled ? '' : '需要配置 SYSTEM_UPDATE_COMMAND 后才能后台更新'}
+                >
+                  {systemUpdating ? '更新中...' : '立即更新'}
+                </button>
+              </div>
+            </div>
+            <div className="system-update-grid">
+              <div>
+                <span>当前版本</span>
+                <strong>{systemUpdate?.currentVersion || '-'}</strong>
+              </div>
+              <div>
+                <span>最新版本</span>
+                <strong>{systemUpdate?.latestVersion || '-'}</strong>
+              </div>
+              <div>
+                <span>更新状态</span>
+                <strong className={systemUpdate?.updateAvailable ? 'is-warning' : 'is-ok'}>{systemUpdate?.message || '尚未检测'}</strong>
+              </div>
+              <div>
+                <span>发布时间</span>
+                <strong>{formatOptionalDate(systemUpdate?.publishedAt)}</strong>
+              </div>
+            </div>
+            <div className="system-update-note">
+              <span>Release 标准：{systemUpdate?.repository || 'hepingan11/sub2-Expansion'} 的 latest release。</span>
+              {!systemUpdate?.updateEnabled && (
+                <span>未配置后台更新命令时，请在服务器执行：git pull && docker compose up -d --build</span>
+              )}
+            </div>
+            {systemUpdateOutput && (
+              <pre className="system-update-output">{systemUpdateOutput}</pre>
+            )}
           </div>
 
           <div className="sub2api-editor standalone">

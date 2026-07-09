@@ -30,6 +30,9 @@ func loadConfig() Config {
 		Sub2APITimeout:       time.Duration(envInt("SUB2API_TIMEOUT_SECONDS", 15)) * time.Second,
 		Sub2APIRefreshToken:  envBool("SUB2API_TOKEN_REFRESH_ENABLED", true),
 		Sub2APIRefreshEvery:  time.Duration(envInt("SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS", 300)) * time.Second,
+		AppVersion:           env("APP_VERSION", "dev"),
+		GitHubRepository:     env("GITHUB_REPOSITORY", "hepingan11/sub2-Expansion"),
+		SystemUpdateCommand:  env("SYSTEM_UPDATE_COMMAND", ""),
 	}
 }
 

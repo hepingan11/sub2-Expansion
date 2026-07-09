@@ -16,6 +16,13 @@ curl -fsSL https://raw.githubusercontent.com/hepingan11/sub2-Expansion/main/scri
 
 脚本会拉取 GitHub 仓库、首次生成 `.env`，并执行 `docker compose up -d --build`。首次生成的后台密码会打印在终端里。
 
+如果当前目录没有写入权限，可以指定安装目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/sub2-Expansion/main/scripts/install.sh -o /tmp/sub2-install.sh
+INSTALL_DIR="$HOME/sub2-Expansion" sh /tmp/sub2-install.sh
+```
+
 也可以手动进入已拉取的项目目录启动：
 
 ```bash
@@ -52,6 +59,22 @@ openssl rand -hex 32
 ```
 
 前端容器会把 `/api` 代理到后端容器，所以 `VITE_API_BASE` 通常保持为空即可。后端不会对外暴露端口，浏览器只访问前端容器的 `HTTP_PORT`。
+
+## 版本更新
+
+后台“系统设置”会通过 GitHub Releases 检测 `hepingan11/sub2-Expansion` 的 latest release。检测到新版本后：
+
+- 一键安装脚本会默认写入 `SYSTEM_UPDATE_COMMAND`，后台可以点击“立即更新”。
+- 更新命令会切换到 latest release tag，更新 `.env` 里的 `APP_VERSION`，再执行 `docker compose up -d --build`。
+- 为了让后台容器执行 compose 更新，`backend` 服务会挂载项目目录和 `/var/run/docker.sock`。这等同于授予后台管理员主机 Docker 管理权限，只建议在可信管理员环境使用。
+
+如果不想允许后台执行更新，把 `.env` 里的 `SYSTEM_UPDATE_COMMAND` 留空即可。之后可以在服务器手动更新：
+
+```bash
+git fetch --tags origin
+git checkout <release-tag>
+docker compose up -d --build
+```
 
 ## 常用命令
 

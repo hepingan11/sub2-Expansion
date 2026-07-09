@@ -3,9 +3,18 @@ set -eu
 
 REPO_URL="${REPO_URL:-https://github.com/hepingan11/sub2-Expansion.git}"
 BRANCH="${BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-sub2-Expansion}"
 HTTP_PORT="${HTTP_PORT:-6779}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+DEFAULT_UPDATE_COMMAND='git config --global --add safe.directory /opt/sub2-Expansion && cd /opt/sub2-Expansion && git fetch --tags origin && git checkout "$LATEST_VERSION" && if grep -q "^APP_VERSION=" .env; then sed -i "s#^APP_VERSION=.*#APP_VERSION=$LATEST_VERSION#" .env; else printf "\nAPP_VERSION=%s\n" "$LATEST_VERSION" >> .env; fi && nohup sh -c "docker compose --project-directory /opt/sub2-Expansion -f /opt/sub2-Expansion/docker-compose.yml up -d --build" >/tmp/sub2-expansion-update.log 2>&1 &'
+
+if [ -n "${INSTALL_DIR:-}" ]; then
+  INSTALL_DIR="$INSTALL_DIR"
+elif [ -w "." ]; then
+  INSTALL_DIR="sub2-Expansion"
+else
+  INSTALL_DIR="${HOME:-/tmp}/sub2-Expansion"
+  echo "Current directory is not writable, using ${INSTALL_DIR}."
+fi
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -37,6 +46,14 @@ env_value() {
   fi
 }
 
+ensure_env_line() {
+  key="$1"
+  value="$2"
+  if ! grep -q "^${key}=" .env 2>/dev/null; then
+    printf '%s=%s\n' "$key" "$value" >> .env
+  fi
+}
+
 need_cmd git
 need_cmd docker
 
@@ -59,15 +76,19 @@ else
 fi
 
 cd "$INSTALL_DIR"
+PROJECT_DIR="${PROJECT_DIR:-$(pwd -P)}"
 
 if [ ! -f .env ]; then
   POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(random_hex 16)}"
   ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(random_hex 8)}"
   AUTH_SECRET="${AUTH_SECRET:-$(random_hex 32)}"
-  CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:${HTTP_PORT},http://127.0.0.1:${HTTP_PORT}}"
+  CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-*}"
+  APP_VERSION="${APP_VERSION:-$(git describe --tags --always 2>/dev/null || printf '%s' dev)}"
+  SYSTEM_UPDATE_COMMAND="${SYSTEM_UPDATE_COMMAND:-$DEFAULT_UPDATE_COMMAND}"
 
   cat > .env <<EOF
 HTTP_PORT=${HTTP_PORT}
+PROJECT_DIR=${PROJECT_DIR}
 TZ=Asia/Shanghai
 
 POSTGRES_DB=${POSTGRES_DB:-sub2_expansion}
@@ -78,6 +99,9 @@ ADMIN_USERNAME=${ADMIN_USERNAME}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 AUTH_SECRET=${AUTH_SECRET}
 AUTH_TOKEN_TTL_HOURS=${AUTH_TOKEN_TTL_HOURS:-24}
+APP_VERSION=${APP_VERSION}
+GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}
+SYSTEM_UPDATE_COMMAND=${SYSTEM_UPDATE_COMMAND}
 
 VITE_API_BASE=
 CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
@@ -96,6 +120,10 @@ EOF
   echo "Created .env with generated secrets."
 else
   echo ".env already exists, keeping current configuration."
+  ensure_env_line PROJECT_DIR "$PROJECT_DIR"
+  ensure_env_line APP_VERSION "$(git describe --tags --always 2>/dev/null || printf '%s' dev)"
+  ensure_env_line GITHUB_REPOSITORY "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}"
+  ensure_env_line SYSTEM_UPDATE_COMMAND "${SYSTEM_UPDATE_COMMAND:-$DEFAULT_UPDATE_COMMAND}"
 fi
 
 docker compose up -d --build

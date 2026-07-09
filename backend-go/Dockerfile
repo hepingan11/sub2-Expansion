@@ -4,7 +4,9 @@ FROM golang:1.25-alpine AS build
 
 WORKDIR /src
 
-RUN apk add --no-cache ca-certificates tzdata
+ARG APP_VERSION=dev
+
+RUN apk add --no-cache ca-certificates docker-cli docker-cli-compose git tzdata
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -14,6 +16,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/redeem-
 
 FROM alpine:3.22
 
+ARG APP_VERSION=dev
+
 RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
@@ -22,6 +26,7 @@ COPY --from=build /out/redeem-code-system-go /app/redeem-code-system-go
 
 ENV GIN_MODE=release \
     SERVER_PORT=8625 \
+    APP_VERSION=${APP_VERSION} \
     TZ=Asia/Shanghai
 
 EXPOSE 8625

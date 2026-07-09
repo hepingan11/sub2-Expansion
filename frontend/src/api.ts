@@ -313,6 +313,25 @@ export interface Sub2APIGroupRateMonitor {
   logs: Sub2APIGroupRateLog[];
 }
 
+export interface SystemUpdateCheck {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  releaseName: string;
+  publishedAt: string;
+  repository: string;
+  updateEnabled: boolean;
+  updateCommand?: string;
+  message: string;
+}
+
+export interface SystemUpdateResult {
+  started: boolean;
+  output: string;
+  message: string;
+}
+
 export interface Sub2APIGroupRateUpdatePayload {
   rateMultiplier: number;
   groupName?: string;
@@ -602,6 +621,16 @@ export async function createSub2APIGroupRateLog(groupId: string, payload: Sub2AP
 export async function deleteSub2APIGroupRateLog(id: number) {
   return request<Sub2APIGroupRateLog[]>(`/api/admin/sub2api/group-rate-monitor/logs/${id}`, {
     method: 'DELETE'
+  });
+}
+
+export async function fetchSystemUpdateCheck() {
+  return request<SystemUpdateCheck>('/api/admin/system/update-check');
+}
+
+export async function runSystemUpdate() {
+  return request<SystemUpdateResult>('/api/admin/system/update', {
+    method: 'POST'
   });
 }
 

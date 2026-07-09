@@ -25,6 +25,9 @@ type Config struct {
 	Sub2APITimeout       time.Duration
 	Sub2APIRefreshToken  bool
 	Sub2APIRefreshEvery  time.Duration
+	AppVersion           string
+	GitHubRepository     string
+	SystemUpdateCommand  string
 }
 
 type App struct {

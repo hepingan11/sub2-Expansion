@@ -21,6 +21,8 @@ services:
   backend:
     build:
       context: ./backend-go
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: sub2-expansion-backend:latest
     restart: unless-stopped
     depends_on:
@@ -36,7 +38,10 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       AUTH_SECRET: ${AUTH_SECRET:-please-change-this-secret-before-production}
       AUTH_TOKEN_TTL_HOURS: ${AUTH_TOKEN_TTL_HOURS:-24}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:6779,http://127.0.0.1:6779,http://localhost,http://127.0.0.1}
+      APP_VERSION: ${APP_VERSION:-dev}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}
+      SYSTEM_UPDATE_COMMAND: ${SYSTEM_UPDATE_COMMAND:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
       CHECK_IN_DAILY_MAX_USERS: ${CHECK_IN_DAILY_MAX_USERS:-20}
       SUB2API_BASE_URL: ${SUB2API_BASE_URL:-}
       SUB2API_ADMIN_API_KEY: ${SUB2API_ADMIN_API_KEY:-}
@@ -47,6 +52,9 @@ services:
       SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS: ${SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS:-300}
     expose:
       - "8625"
+    volumes:
+      - ${PROJECT_DIR:-.}:/opt/sub2-Expansion
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8625/healthz >/dev/null || exit 1"]
       interval: 30s

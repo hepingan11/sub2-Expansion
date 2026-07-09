@@ -71,6 +71,8 @@ func (app *App) router() *gin.Engine {
 	protected.PUT("/recharge-activities/:id", app.updateRechargeActivity)
 	protected.DELETE("/recharge-activities/:id", app.deleteRechargeActivity)
 	protected.GET("/recharge-reward-claims", app.listAdminRechargeRewardClaims)
+	protected.GET("/system/update-check", app.getSystemUpdateCheck)
+	protected.POST("/system/update", app.runSystemUpdate)
 
 	return router
 }
