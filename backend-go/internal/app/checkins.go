@@ -147,6 +147,7 @@ func (app *App) getUserCheckInStatus(c *gin.Context) {
 		UserID:           &userID,
 		SignDate:         &today,
 		Amount:           Amount{Decimal: decimal.Zero},
+		GroupLink:        app.checkInGroupLink(),
 		Message:          "今日尚未签到",
 	})
 }
@@ -207,7 +208,9 @@ func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInRes
 	if err := app.db.First(&code, existingRecord.RedeemCodeID).Error; err != nil {
 		return CheckInResponse{}, false, err
 	}
-	return toCheckInResponse(code, true, "already checked in today", existingRecord.CheckInMethod, existingRecord.PlatformType), true, nil
+	response := toCheckInResponse(code, true, "already checked in today", existingRecord.CheckInMethod, existingRecord.PlatformType)
+	response.GroupLink = app.checkInGroupLink()
+	return response, true, nil
 }
 
 func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate, autoRedeemUserID *int64, checkInMethod, platformType string) (CheckInResponse, error) {
@@ -266,7 +269,18 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 		response = toCheckInResponse(savedCode, false, message, checkInMethod, platformType)
 		return nil
 	})
+	if err == nil {
+		response.GroupLink = app.checkInGroupLink()
+	}
 	return response, err
+}
+
+func (app *App) checkInGroupLink() string {
+	value, _, err := app.getSetting(checkInGroupLinkKey)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod string) error {

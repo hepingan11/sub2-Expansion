@@ -69,6 +69,7 @@ type CheckInResponse struct {
 	Amount           Amount     `json:"amount"`
 	CheckInMethod    string     `json:"checkInMethod"`
 	PlatformType     string     `json:"platformType,omitempty"`
+	GroupLink        string     `json:"groupLink"`
 	Message          string     `json:"message"`
 }
 
@@ -106,6 +107,7 @@ type CheckInSettingsResponse struct {
 	PrizeTiers          []PrizeTier   `json:"prizeTiers"`
 	DirectPrizeTiers    []PrizeTier   `json:"directPrizeTiers"`
 	SocialPrizeTiers    []PrizeTier   `json:"socialPrizeTiers"`
+	GroupLink           string        `json:"groupLink"`
 	Admin               AdminConfig   `json:"admin"`
 	Sub2API             Sub2APIConfig `json:"sub2api"`
 }
@@ -118,6 +120,7 @@ type UpdateCheckInSettingsRequest struct {
 	PrizeTiers          []PrizeTier   `json:"prizeTiers"`
 	DirectPrizeTiers    []PrizeTier   `json:"directPrizeTiers"`
 	SocialPrizeTiers    []PrizeTier   `json:"socialPrizeTiers"`
+	GroupLink           string        `json:"groupLink"`
 	Admin               AdminConfig   `json:"admin"`
 	Sub2API             Sub2APIConfig `json:"sub2api"`
 }

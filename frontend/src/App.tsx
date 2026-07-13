@@ -423,6 +423,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   );
   const checkInAmount = checkInStatus?.code ? Number(checkInStatus.amount).toFixed(2) : '-';
   const checkInDate = checkInStatus?.signDate ?? formatToday();
+  const checkInGroupLink = checkInStatus?.groupLink?.trim() ?? '';
   const socialBindings = Array.isArray(user?.socialBindings) ? user.socialBindings : [];
 
   return (
@@ -507,6 +508,17 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
             <strong>{checkInStatus.code}</strong>
           </div>
         )}
+        <div className="checkin-note-line">
+          <span>站内签到固定金额，群内签到随机金额。</span>
+          {checkInGroupLink ? (
+            <a href={checkInGroupLink} target="_blank" rel="noreferrer">
+              <ExternalLink size={15} />
+              群链接
+            </a>
+          ) : (
+            <strong>群链接暂未设置</strong>
+          )}
+        </div>
       </section>
 
       <section className="user-info-panel recharge-reward-panel">
@@ -700,6 +712,8 @@ function Dashboard({
   const [prizeTierDrafts, setPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
   const [socialPrizeTiers, setSocialPrizeTiers] = useState<PrizeTierSetting[]>([]);
   const [socialPrizeTierDrafts, setSocialPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
+  const [groupLink, setGroupLink] = useState('');
+  const [groupLinkDraft, setGroupLinkDraft] = useState('');
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(emptyAdminSettings);
   const [adminSettingsDraft, setAdminSettingsDraft] = useState<AdminSettings>(emptyAdminSettings);
   const [sub2api, setSub2api] = useState<Sub2APISettings>(emptySub2APISettings);
@@ -769,6 +783,8 @@ function Dashboard({
     setPrizeTierDrafts(toPrizeTierDrafts(directTiers));
     setSocialPrizeTiers(Array.isArray(socialTiers) ? socialTiers : []);
     setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
+    setGroupLink(settingsData.groupLink ?? '');
+    setGroupLinkDraft(settingsData.groupLink ?? '');
     const nextAdmin = settingsData.admin ?? emptyAdminSettings;
     setAdminSettings(nextAdmin);
     setAdminSettingsDraft({ ...nextAdmin, password: '' });
@@ -1019,7 +1035,7 @@ function Dashboard({
         return;
       }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, parsedAdminSettings, parsedSub2API);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), parsedAdminSettings, parsedSub2API);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1037,6 +1053,8 @@ function Dashboard({
       setPrizeTierDrafts(toPrizeTierDrafts(directTiers));
       setSocialPrizeTiers(socialTiers);
       setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
+      setGroupLink(settings.groupLink ?? '');
+      setGroupLinkDraft(settings.groupLink ?? '');
       const savedAdmin = settings.admin ?? emptyAdminSettings;
       setAdminSettings(savedAdmin);
       setAdminSettingsDraft({ ...savedAdmin, password: '' });
@@ -1359,13 +1377,25 @@ function Dashboard({
                 </label>
               </>
             )}
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, groupLink, groupLinkDraft, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
             {settingsSaved && <span className="settings-saved">已保存</span>}
           </div>
         </div>
+
+        <label className="checkin-link-field">
+          群链接
+          <input
+            value={groupLinkDraft}
+            onChange={(event) => {
+              setGroupLinkDraft(event.target.value);
+              setSettingsSaved(false);
+            }}
+            placeholder="https://..."
+          />
+        </label>
 
         <div className="checkin-tier-grid">
         <div className="tier-editor">
@@ -2102,7 +2132,7 @@ function Dashboard({
               <Settings2 size={18} />
               <span>系统设置</span>
             </div>
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, groupLink, groupLinkDraft, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>

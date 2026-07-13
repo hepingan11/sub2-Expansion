@@ -88,6 +88,7 @@ export interface CheckInSettings {
   prizeTiers: PrizeTierSetting[];
   directPrizeTiers: PrizeTierSetting[];
   socialPrizeTiers: PrizeTierSetting[];
+  groupLink: string;
   admin: AdminSettings;
   sub2api: Sub2APISettings;
 }
@@ -101,6 +102,7 @@ export interface CheckInResult {
   amount: number;
   checkInMethod?: string;
   platformType?: string;
+  groupLink?: string;
   message: string;
 }
 
@@ -462,12 +464,13 @@ export async function updateCheckInSettings(
   socialDailyMaxUsers: number,
   directPrizeTiers: PrizeTierSetting[],
   socialPrizeTiers: PrizeTierSetting[],
+  groupLink: string,
   admin: AdminSettings,
   sub2api: Sub2APISettings
 ) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, admin, sub2api })
+    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, admin, sub2api })
   });
 }
 

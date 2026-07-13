@@ -82,6 +82,10 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if err := app.saveSetting(checkInGroupLinkKey, strings.TrimSpace(req.GroupLink)); err != nil {
+		serverError(c, err)
+		return
+	}
 	adminConfig := req.Admin
 	if strings.TrimSpace(adminConfig.Username) == "" && adminConfig.Password == "" {
 		currentAdmin, err := app.effectiveAdminConfig()
@@ -136,6 +140,10 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
+	groupLink, err := app.settingOrDefault(checkInGroupLinkKey, "")
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	admin, err := app.effectiveAdminConfig()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
@@ -158,6 +166,7 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		PrizeTiers:          directTiers,
 		DirectPrizeTiers:    directTiers,
 		SocialPrizeTiers:    socialTiers,
+		GroupLink:           groupLink,
 		Admin:               admin,
 		Sub2API:             sub2api,
 	}, nil

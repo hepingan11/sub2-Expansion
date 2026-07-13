@@ -22,6 +22,7 @@ const (
 	socialDailyMaxUsersKey = "check_in.social_daily_max_users"
 	prizeTiersKey          = "check_in.prize_tiers"
 	socialPrizeTiersKey    = "check_in.social_prize_tiers"
+	checkInGroupLinkKey    = "check_in.group_link"
 
 	adminUsernameKey     = "admin.username"
 	adminPasswordHashKey = "admin.password_hash"

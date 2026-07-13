@@ -481,6 +481,32 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.checkin-note-line {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 8px;
+  background: rgba(239, 246, 255, 0.72);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.checkin-note-line a,
+.checkin-note-line strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .user-info-panel {
   display: grid;
   gap: 14px;
@@ -1212,9 +1238,16 @@ textarea {
 
 .daily-limit-field input,
 .daily-limit-field select,
+.checkin-link-field input,
 .checkin-settings .tier-row input,
 .checkin-settings .tier-row select {
   min-height: 38px;
+}
+
+.checkin-link-field {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
 }
 
 .tier-editor {

@@ -268,6 +268,8 @@ export function settingsChanged(
   directPrizeTierDrafts: { amount: string; probability: string }[],
   socialPrizeTiers: PrizeTierSetting[],
   socialPrizeTierDrafts: { amount: string; probability: string }[],
+  groupLink: string,
+  groupLinkDraft: string,
   admin: AdminSettings,
   adminDraft: AdminSettings,
   sub2api: Sub2APISettings,
@@ -289,6 +291,9 @@ export function settingsChanged(
     return true;
   }
   if (JSON.stringify(toPrizeTierDrafts(socialPrizeTiers)) !== JSON.stringify(socialPrizeTierDrafts)) {
+    return true;
+  }
+  if (groupLinkDraft !== groupLink) {
     return true;
   }
   if (adminDraft.username !== admin.username) {
