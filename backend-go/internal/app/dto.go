@@ -58,19 +58,21 @@ type CheckInRequest struct {
 	UserID       string `json:"userId"`
 	PlatformType string `json:"platformType"`
 	Platform     string `json:"platform"`
+	InviteCode   string `json:"inviteCode"`
 }
 
 type CheckInResponse struct {
-	Success          bool       `json:"success"`
-	AlreadyCheckedIn bool       `json:"alreadyCheckedIn"`
-	UserID           *string    `json:"userId"`
-	SignDate         *LocalDate `json:"signDate"`
-	Code             string     `json:"code"`
-	Amount           Amount     `json:"amount"`
-	CheckInMethod    string     `json:"checkInMethod"`
-	PlatformType     string     `json:"platformType,omitempty"`
-	GroupLink        string     `json:"groupLink"`
-	Message          string     `json:"message"`
+	Success          bool        `json:"success"`
+	AlreadyCheckedIn bool        `json:"alreadyCheckedIn"`
+	UserID           *string     `json:"userId"`
+	SignDate         *LocalDate  `json:"signDate"`
+	Code             string      `json:"code"`
+	Amount           Amount      `json:"amount"`
+	CheckInMethod    string      `json:"checkInMethod"`
+	PlatformType     string      `json:"platformType,omitempty"`
+	GroupLink        string      `json:"groupLink"`
+	SocialPrizeTiers []PrizeTier `json:"socialPrizeTiers"`
+	Message          string      `json:"message"`
 }
 
 type SocialBindingRequiredResponse struct {
@@ -80,6 +82,7 @@ type SocialBindingRequiredResponse struct {
 	UserID         string `json:"userId"`
 	ExternalUserID string `json:"externalUserId"`
 	BindingURL     string `json:"bindingUrl"`
+	InviteCode     string `json:"inviteCode,omitempty"`
 }
 
 type CheckInStatsResponse struct {
@@ -100,29 +103,36 @@ type PrizeTier struct {
 }
 
 type CheckInSettingsResponse struct {
-	DailyMaxUsers       int           `json:"dailyMaxUsers"`
-	DailyLimitMode      string        `json:"dailyLimitMode"`
-	DirectDailyMaxUsers int           `json:"directDailyMaxUsers"`
-	SocialDailyMaxUsers int           `json:"socialDailyMaxUsers"`
-	PrizeTiers          []PrizeTier   `json:"prizeTiers"`
-	DirectPrizeTiers    []PrizeTier   `json:"directPrizeTiers"`
-	SocialPrizeTiers    []PrizeTier   `json:"socialPrizeTiers"`
-	GroupLink           string        `json:"groupLink"`
-	Admin               AdminConfig   `json:"admin"`
-	Sub2API             Sub2APIConfig `json:"sub2api"`
+	DailyMaxUsers       int              `json:"dailyMaxUsers"`
+	DailyLimitMode      string           `json:"dailyLimitMode"`
+	DirectDailyMaxUsers int              `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers int              `json:"socialDailyMaxUsers"`
+	PrizeTiers          []PrizeTier      `json:"prizeTiers"`
+	DirectPrizeTiers    []PrizeTier      `json:"directPrizeTiers"`
+	SocialPrizeTiers    []PrizeTier      `json:"socialPrizeTiers"`
+	GroupLink           string           `json:"groupLink"`
+	Admin               AdminConfig      `json:"admin"`
+	Sub2API             Sub2APIConfig    `json:"sub2api"`
+	Invitation          InvitationConfig `json:"invitation"`
 }
 
 type UpdateCheckInSettingsRequest struct {
-	DailyMaxUsers       int           `json:"dailyMaxUsers"`
-	DailyLimitMode      string        `json:"dailyLimitMode"`
-	DirectDailyMaxUsers int           `json:"directDailyMaxUsers"`
-	SocialDailyMaxUsers int           `json:"socialDailyMaxUsers"`
-	PrizeTiers          []PrizeTier   `json:"prizeTiers"`
-	DirectPrizeTiers    []PrizeTier   `json:"directPrizeTiers"`
-	SocialPrizeTiers    []PrizeTier   `json:"socialPrizeTiers"`
-	GroupLink           string        `json:"groupLink"`
-	Admin               AdminConfig   `json:"admin"`
-	Sub2API             Sub2APIConfig `json:"sub2api"`
+	DailyMaxUsers       int              `json:"dailyMaxUsers"`
+	DailyLimitMode      string           `json:"dailyLimitMode"`
+	DirectDailyMaxUsers int              `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers int              `json:"socialDailyMaxUsers"`
+	PrizeTiers          []PrizeTier      `json:"prizeTiers"`
+	DirectPrizeTiers    []PrizeTier      `json:"directPrizeTiers"`
+	SocialPrizeTiers    []PrizeTier      `json:"socialPrizeTiers"`
+	GroupLink           string           `json:"groupLink"`
+	Admin               AdminConfig      `json:"admin"`
+	Sub2API             Sub2APIConfig    `json:"sub2api"`
+	Invitation          InvitationConfig `json:"invitation"`
+}
+
+type InvitationConfig struct {
+	AfterTime string `json:"afterTime"`
+	Amount    Amount `json:"amount"`
 }
 
 type AdminConfig struct {

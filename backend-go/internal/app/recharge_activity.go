@@ -22,8 +22,9 @@ import (
 const stalePendingClaimAfter = 10 * time.Minute
 
 type sub2APIUserSnapshot struct {
-	ID             int64   `json:"id"`
-	TotalRecharged float64 `json:"total_recharged"`
+	ID             int64     `json:"id"`
+	TotalRecharged float64   `json:"total_recharged"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 func (app *App) listRechargeActivities(c *gin.Context) {

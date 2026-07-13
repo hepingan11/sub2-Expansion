@@ -3,15 +3,15 @@ package app
 import "testing"
 
 func TestBuildSocialBindingURL(t *testing.T) {
-	got := buildSocialBindingURL("https://example.com/", "telegram", "user 123")
-	want := "https://example.com/?platform=telegram&userid=user+123"
+	got := buildSocialBindingURL("https://example.com/", "telegram", "user 123", "ABCDEFGH")
+	want := "https://example.com/?invitecode=ABCDEFGH&platform=telegram&userid=user+123"
 	if got != want {
 		t.Fatalf("buildSocialBindingURL() = %q, want %q", got, want)
 	}
 }
 
 func TestBuildSocialBindingURLWithoutBase(t *testing.T) {
-	got := buildSocialBindingURL("", "wechat", "abc")
+	got := buildSocialBindingURL("", "wechat", "abc", "")
 	want := "/?platform=wechat&userid=abc"
 	if got != want {
 		t.Fatalf("buildSocialBindingURL() = %q, want %q", got, want)

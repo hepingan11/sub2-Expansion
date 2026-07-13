@@ -51,6 +51,14 @@ func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
 		badRequest(c, err.Error())
 		return
 	}
+	inviteCode := ""
+	if strings.TrimSpace(req.InviteCode) != "" {
+		inviteCode, err = normalizeInvitationCode(req.InviteCode)
+		if err != nil {
+			badRequest(c, err.Error())
+			return
+		}
+	}
 
 	var binding SocialAccountBinding
 	if err := app.db.Where("platform = ? AND external_user_id = ?", platform, externalUserID).First(&binding).Error; err != nil {
@@ -61,7 +69,8 @@ func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
 				Platform:       platform,
 				UserID:         externalUserID,
 				ExternalUserID: externalUserID,
-				BindingURL:     app.socialBindingURL(c, platform, externalUserID),
+				BindingURL:     app.socialBindingURL(c, platform, externalUserID, inviteCode),
+				InviteCode:     inviteCode,
 			})
 			return
 		}
@@ -73,18 +82,21 @@ func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
 	app.respondCheckIn(c, canonicalUserID, &binding.UserID, checkInMethodSocial, platform)
 }
 
-func (app *App) socialBindingURL(c *gin.Context, platform, externalUserID string) string {
+func (app *App) socialBindingURL(c *gin.Context, platform, externalUserID, inviteCode string) string {
 	baseURL := strings.TrimRight(strings.TrimSpace(app.cfg.FrontendPublicURL), "/")
 	if baseURL == "" {
 		baseURL = requestPublicOrigin(c)
 	}
-	return buildSocialBindingURL(baseURL, platform, externalUserID)
+	return buildSocialBindingURL(baseURL, platform, externalUserID, inviteCode)
 }
 
-func buildSocialBindingURL(baseURL, platform, externalUserID string) string {
+func buildSocialBindingURL(baseURL, platform, externalUserID, inviteCode string) string {
 	values := url.Values{}
 	values.Set("platform", platform)
 	values.Set("userid", externalUserID)
+	if inviteCode != "" {
+		values.Set("invitecode", inviteCode)
+	}
 	prefix := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if prefix == "" {
 		return "/?" + values.Encode()
@@ -138,18 +150,26 @@ func (app *App) getUserCheckInStatus(c *gin.Context) {
 		serverError(c, err)
 		return
 	} else if found {
+		if err := app.attachPublicCheckInSettings(&response); err != nil {
+			serverError(c, err)
+			return
+		}
 		c.JSON(http.StatusOK, response)
 		return
 	}
-	c.JSON(http.StatusOK, CheckInResponse{
+	response := CheckInResponse{
 		Success:          true,
 		AlreadyCheckedIn: false,
 		UserID:           &userID,
 		SignDate:         &today,
 		Amount:           Amount{Decimal: decimal.Zero},
-		GroupLink:        app.checkInGroupLink(),
 		Message:          "今日尚未签到",
-	})
+	}
+	if err := app.attachPublicCheckInSettings(&response); err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func (app *App) userCheckIn(c *gin.Context) {
@@ -167,6 +187,10 @@ func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *
 		serverError(c, err)
 		return
 	} else if found {
+		if err := app.attachPublicCheckInSettings(&response); err != nil {
+			serverError(c, err)
+			return
+		}
 		c.JSON(http.StatusOK, response)
 		return
 	}
@@ -175,6 +199,10 @@ func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || isDuplicateEntry(err) {
 			if response, found, err := app.todayCheckInResponse(userID, today); err == nil && found {
+				if settingsErr := app.attachPublicCheckInSettings(&response); settingsErr != nil {
+					serverError(c, settingsErr)
+					return
+				}
 				c.JSON(http.StatusOK, response)
 				return
 			}
@@ -188,6 +216,10 @@ func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *
 			respondSub2APIError(c, err)
 			return
 		}
+		serverError(c, err)
+		return
+	}
+	if err := app.attachPublicCheckInSettings(&response); err != nil {
 		serverError(c, err)
 		return
 	}
@@ -209,7 +241,6 @@ func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInRes
 		return CheckInResponse{}, false, err
 	}
 	response := toCheckInResponse(code, true, "already checked in today", existingRecord.CheckInMethod, existingRecord.PlatformType)
-	response.GroupLink = app.checkInGroupLink()
 	return response, true, nil
 }
 
@@ -269,10 +300,21 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 		response = toCheckInResponse(savedCode, false, message, checkInMethod, platformType)
 		return nil
 	})
-	if err == nil {
-		response.GroupLink = app.checkInGroupLink()
-	}
 	return response, err
+}
+
+func (app *App) attachPublicCheckInSettings(response *CheckInResponse) error {
+	directTiers, err := app.getPrizeTiers(prizeTiersKey, defaultPrizeTiers)
+	if err != nil {
+		return err
+	}
+	socialTiers, err := app.getPrizeTiers(socialPrizeTiersKey, directTiers)
+	if err != nil {
+		return err
+	}
+	response.GroupLink = app.checkInGroupLink()
+	response.SocialPrizeTiers = socialTiers
+	return nil
 }
 
 func (app *App) checkInGroupLink() string {

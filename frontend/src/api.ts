@@ -91,6 +91,12 @@ export interface CheckInSettings {
   groupLink: string;
   admin: AdminSettings;
   sub2api: Sub2APISettings;
+  invitation: InvitationSettings;
+}
+
+export interface InvitationSettings {
+  afterTime: string;
+  amount: number;
 }
 
 export interface CheckInResult {
@@ -103,6 +109,7 @@ export interface CheckInResult {
   checkInMethod?: string;
   platformType?: string;
   groupLink?: string;
+  socialPrizeTiers?: PrizeTierSetting[];
   message: string;
 }
 
@@ -258,6 +265,7 @@ export interface AdminRechargeRewardClaim {
 export interface SocialBindingPayload {
   platform: string;
   userId: string;
+  inviteCode?: string;
 }
 
 export interface SocialBindingResult {
@@ -267,6 +275,7 @@ export interface SocialBindingResult {
   bound: boolean;
   alreadyBound: boolean;
   message: string;
+  invitation?: InvitationBindingResult;
 }
 
 export interface Sub2APIGroupRateMonitorSettings {
@@ -326,6 +335,42 @@ export interface SystemUpdateCheck {
   updateEnabled: boolean;
   updateCommand?: string;
   message: string;
+}
+
+export interface InvitationBindingResult {
+  bound: boolean;
+  alreadyBound: boolean;
+  inviteCode: string;
+  rewardAmount: number;
+  message: string;
+}
+
+export interface UserInvitation {
+  code: string;
+  successfulInvites: number;
+  totalReward: number;
+  rewardAmount: number;
+  afterTime: string;
+  enabled: boolean;
+  invitedByCode?: string;
+  invitedAt?: string;
+}
+
+export interface InvitationRecord {
+  id: number;
+  invitationCodeId: number;
+  inviteCode: string;
+  inviterUserId: number;
+  inviteeUserId: number;
+  platform: string;
+  externalUserId: string;
+  inviteeCreatedAt: string;
+  rewardAmount: number;
+  rewardStatus: string;
+  errorMessage: string;
+  rewardedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SystemUpdateResult {
@@ -466,12 +511,21 @@ export async function updateCheckInSettings(
   socialPrizeTiers: PrizeTierSetting[],
   groupLink: string,
   admin: AdminSettings,
-  sub2api: Sub2APISettings
+  sub2api: Sub2APISettings,
+  invitation: InvitationSettings
 ) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, admin, sub2api })
+    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, admin, sub2api, invitation })
   });
+}
+
+export async function fetchUserInvitation() {
+  return userRequest<UserInvitation>('/api/user/invitation');
+}
+
+export async function generateUserInvitationCode() {
+  return userRequest<UserInvitation>('/api/user/invitation/code', { method: 'POST' });
 }
 
 export async function fetchCodes(params: Record<string, string | number | undefined>) {
@@ -557,6 +611,16 @@ export async function fetchRechargeRewardClaims(params: Record<string, string | 
     }
   });
   return request<PageResult<AdminRechargeRewardClaim>>(`/api/admin/recharge-reward-claims?${query.toString()}`);
+}
+
+export async function fetchInvitationRecords(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+  return request<PageResult<InvitationRecord>>(`/api/admin/invitations?${query.toString()}`);
 }
 
 export async function createRechargeActivity(payload: RechargeActivityPayload) {

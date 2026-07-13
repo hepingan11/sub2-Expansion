@@ -297,6 +297,35 @@ func (b *SocialAccountBinding) BeforeUpdate(*gorm.DB) error {
 	return nil
 }
 
+type InvitationCode struct {
+	ID        uint64   `gorm:"primaryKey;column:id" json:"id"`
+	UserID    int64    `gorm:"column:user_id;not null;uniqueIndex:uk_invitation_codes_user" json:"userId"`
+	Code      string   `gorm:"column:code;size:16;not null;uniqueIndex:uk_invitation_codes_code" json:"code"`
+	CreatedAt JSONTime `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt JSONTime `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (InvitationCode) TableName() string { return "invitation_codes" }
+
+type InvitationBinding struct {
+	ID               uint64    `gorm:"primaryKey;column:id" json:"id"`
+	InvitationCodeID uint64    `gorm:"column:invitation_code_id;not null;index:idx_invitation_bindings_code" json:"invitationCodeId"`
+	InviteCode       string    `gorm:"column:invite_code;size:16;not null" json:"inviteCode"`
+	InviterUserID    int64     `gorm:"column:inviter_user_id;not null;index:idx_invitation_bindings_inviter" json:"inviterUserId"`
+	InviteeUserID    int64     `gorm:"column:invitee_user_id;not null;uniqueIndex:uk_invitation_bindings_invitee" json:"inviteeUserId"`
+	Platform         string    `gorm:"column:platform;size:40;not null" json:"platform"`
+	ExternalUserID   string    `gorm:"column:external_user_id;size:128;not null" json:"externalUserId"`
+	InviteeCreatedAt JSONTime  `gorm:"column:invitee_created_at;not null" json:"inviteeCreatedAt"`
+	RewardAmount     Amount    `gorm:"column:reward_amount;type:decimal(10,2);not null" json:"rewardAmount"`
+	RewardStatus     string    `gorm:"column:reward_status;size:20;not null;index:idx_invitation_bindings_status" json:"rewardStatus"`
+	ErrorMessage     string    `gorm:"column:error_message;type:text;not null;default:''" json:"errorMessage"`
+	RewardedAt       *JSONTime `gorm:"column:rewarded_at" json:"rewardedAt"`
+	CreatedAt        JSONTime  `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt        JSONTime  `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (InvitationBinding) TableName() string { return "invitation_bindings" }
+
 type Sub2APIGroupRateSnapshot struct {
 	GroupID        string          `gorm:"primaryKey;column:group_id;size:100" json:"groupId"`
 	GroupName      string          `gorm:"column:group_name;size:200;not null" json:"groupName"`

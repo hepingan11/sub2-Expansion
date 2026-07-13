@@ -40,6 +40,11 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		badRequest(c, "daily check-in limits must be greater than or equal to 0")
 		return
 	}
+	invitation, err := normalizeInvitationConfig(req.Invitation)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
 	directInput := req.DirectPrizeTiers
 	if len(directInput) == 0 {
 		directInput = req.PrizeTiers
@@ -83,6 +88,14 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		return
 	}
 	if err := app.saveSetting(checkInGroupLinkKey, strings.TrimSpace(req.GroupLink)); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := app.saveSetting(invitationAfterTimeKey, invitation.AfterTime); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := app.saveSetting(invitationAmountKey, invitation.Amount.StringFixed(2)); err != nil {
 		serverError(c, err)
 		return
 	}
@@ -144,6 +157,10 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
+	invitation, err := app.loadInvitationConfig()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	admin, err := app.effectiveAdminConfig()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
@@ -169,7 +186,51 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		GroupLink:           groupLink,
 		Admin:               admin,
 		Sub2API:             sub2api,
+		Invitation:          invitation,
 	}, nil
+}
+
+func normalizeInvitationConfig(input InvitationConfig) (InvitationConfig, error) {
+	input.AfterTime = strings.TrimSpace(input.AfterTime)
+	input.Amount = Amount{input.Amount.Round(2)}
+	if input.Amount.Cmp(decimal.Zero) < 0 {
+		return InvitationConfig{}, errors.New("邀请奖励金额不能小于 0")
+	}
+	if input.AfterTime == "" {
+		if input.Amount.Cmp(decimal.Zero) > 0 {
+			return InvitationConfig{}, errors.New("设置邀请奖励金额时必须同时设置新人账号时间门槛")
+		}
+		return InvitationConfig{Amount: MustAmount("0.00")}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, input.AfterTime)
+	if err != nil {
+		return InvitationConfig{}, errors.New("新人账号时间门槛必须是有效的 RFC3339 时间")
+	}
+	if input.Amount.Cmp(decimal.Zero) <= 0 {
+		return InvitationConfig{}, errors.New("启用邀请功能时奖励金额必须大于 0")
+	}
+	input.AfterTime = parsed.UTC().Format(time.RFC3339)
+	return input, nil
+}
+
+func (app *App) loadInvitationConfig() (InvitationConfig, error) {
+	afterTime, err := app.settingOrDefault(invitationAfterTimeKey, "")
+	if err != nil {
+		return InvitationConfig{}, err
+	}
+	amountText, err := app.settingOrDefault(invitationAmountKey, "0.00")
+	if err != nil {
+		return InvitationConfig{}, err
+	}
+	amount, err := ParseAmount(amountText)
+	if err != nil {
+		amount = MustAmount("0.00")
+	}
+	config, err := normalizeInvitationConfig(InvitationConfig{AfterTime: afterTime, Amount: amount})
+	if err != nil {
+		return InvitationConfig{Amount: MustAmount("0.00")}, nil
+	}
+	return config, nil
 }
 
 func (app *App) effectiveAdminConfig() (AdminConfig, error) {

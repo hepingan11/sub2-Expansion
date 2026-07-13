@@ -36,6 +36,8 @@ func (app *App) router() *gin.Engine {
 	protectedUser.GET("/check-in", app.getUserCheckInStatus)
 	protectedUser.POST("/check-in", app.userCheckIn)
 	protectedUser.POST("/social-bindings", app.bindSocialAccount)
+	protectedUser.GET("/invitation", app.getUserInvitation)
+	protectedUser.POST("/invitation/code", app.generateUserInvitationCode)
 	protectedUser.GET("/recharge-rewards", app.listUserRechargeRewards)
 	protectedUser.POST("/recharge-rewards/:activityId/tiers/:tierId/claim", app.claimRechargeReward)
 
@@ -71,6 +73,7 @@ func (app *App) router() *gin.Engine {
 	protected.PUT("/recharge-activities/:id", app.updateRechargeActivity)
 	protected.DELETE("/recharge-activities/:id", app.deleteRechargeActivity)
 	protected.GET("/recharge-reward-claims", app.listAdminRechargeRewardClaims)
+	protected.GET("/invitations", app.listAdminInvitations)
 	protected.GET("/system/update-check", app.getSystemUpdateCheck)
 	protected.POST("/system/update", app.runSystemUpdate)
 
