@@ -17,10 +17,11 @@ import {
   RedeemCodeStatus,
   Stats,
   Sub2APIGroupRateMonitor,
-  Sub2APISettings
+  Sub2APISettings,
+  InvitationSettings
 } from './api';
 
-export type DashboardSection = 'checkins' | 'favorites' | 'recharge' | 'rates' | 'system';
+export type DashboardSection = 'checkins' | 'invitations' | 'favorites' | 'recharge' | 'rates' | 'system';
 export type LoginMode = 'user' | 'admin';
 
 export const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
@@ -53,6 +54,11 @@ export const emptyGroupRateMonitor: Sub2APIGroupRateMonitor = {
   groups: [],
   series: [],
   logs: []
+};
+
+export const emptyInvitationSettings: InvitationSettings = {
+  afterTime: '',
+  amount: 0
 };
 
 export const statusText: Record<RedeemCodeStatus, string> = {

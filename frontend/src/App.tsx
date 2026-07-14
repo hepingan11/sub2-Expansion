@@ -1,12 +1,14 @@
 ﻿import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Bookmark,
   CalendarCheck2,
   ChevronDown,
   CheckCircle2,
   CircleDollarSign,
+  Copy,
   ExternalLink,
+  Gift,
   Globe2,
   GripVertical,
   KeyRound,
@@ -18,6 +20,7 @@ import {
   ShieldCheck,
   Trash2,
   UserRound,
+  UserPlus,
   X
 } from 'lucide-react';
 import {
@@ -43,6 +46,7 @@ import {
   fetchCurrentUser,
   fetchFavoriteSiteGroups,
   fetchFavoriteSites,
+  fetchInvitationRecords,
   fetchPublicSub2APIGroupRateSeries,
   fetchRechargeActivities,
   fetchRechargeRewardClaims,
@@ -51,6 +55,7 @@ import {
   fetchSystemUpdateCheck,
   fetchUserCheckInStatus,
   fetchUserRechargeRewards,
+  fetchUserInvitation,
   fetchStats,
   FavoriteSite,
   FavoriteSitePayload,
@@ -63,6 +68,8 @@ import {
   RechargeActivity,
   RechargeActivityPayload,
   Stats,
+  InvitationSettings,
+  InvitationRecord,
   Sub2APIGroupRateMonitor,
   Sub2APIGroupRateGroup,
   Sub2APIGroupRateLog,
@@ -83,6 +90,8 @@ import {
   userCheckIn,
   userLogin,
   userLogin2FA,
+  generateUserInvitationCode,
+  UserInvitation,
   AdminRechargeRewardClaim
 } from './api';
 import {
@@ -90,6 +99,7 @@ import {
   emptyAdminSettings,
   emptyCheckInStats,
   emptyGroupRateMonitor,
+  emptyInvitationSettings,
   emptyStats,
   emptySub2APISettings,
   favoriteEmojiPresets,
@@ -105,6 +115,7 @@ import {
   formatPlatformName,
   formatToday,
   getPendingSocialBindingFromURL,
+  getInviteCodeFromURL,
   isDashboardSection,
   normalizeStats,
   parsePrizeTierDrafts,
@@ -143,6 +154,11 @@ export default function App() {
 }
 
 function RootRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  if (params.get('platform') || params.get('userid') || params.get('invitecode')) {
+    return <Navigate to={`/login${search}`} replace />;
+  }
   if (getUserToken()) return <Navigate to="/user" replace />;
   if (getToken()) return <Navigate to="/admin/recharge" replace />;
   return <Navigate to="/login" replace />;
@@ -180,6 +196,7 @@ function AdminRoute() {
 
 function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void; onUserLogin: () => void }) {
   const pendingSocialBinding = useMemo(() => getPendingSocialBindingFromURL(), []);
+  const lockedInviteCode = useMemo(() => getInviteCodeFromURL(), []);
   const [mode, setMode] = useState<LoginMode>('user');
   const [username, setUsername] = useState('admin');
   const [email, setEmail] = useState('');
@@ -214,7 +231,9 @@ function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void;
       }
       if (data.access_token) {
         clearToken();
-        await bindPendingSocialAccount(pendingSocialBinding);
+        await bindPendingSocialAccount(pendingSocialBinding
+          ? { ...pendingSocialBinding, ...(lockedInviteCode ? { inviteCode: lockedInviteCode } : {}) }
+          : null);
         onUserLogin();
         return;
       }
@@ -311,6 +330,12 @@ function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void;
                   autoComplete="current-password"
                 />
               </label>
+              {lockedInviteCode && (
+                <label>
+                  邀请码
+                  <input value={lockedInviteCode} readOnly aria-readonly="true" className="locked-invite-input" />
+                </label>
+              )}
             </>
           )}
           {error && <div className="error-line">{error}</div>}
@@ -327,6 +352,8 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   const [user, setUser] = useState<Sub2APIUserProfile | null>(null);
   const [rewards, setRewards] = useState<UserRechargeRewards | null>(null);
   const [checkInStatus, setCheckInStatus] = useState<CheckInResult | null>(null);
+  const [invitation, setInvitation] = useState<UserInvitation | null>(null);
+  const [generatingInviteCode, setGeneratingInviteCode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [claimingTierId, setClaimingTierId] = useState<number | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
@@ -338,14 +365,16 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
     setLoading(true);
     setError('');
     try {
-      const [nextUser, nextRewards, nextCheckInStatus] = await Promise.all([
+      const [nextUser, nextRewards, nextCheckInStatus, nextInvitation] = await Promise.all([
         fetchCurrentUser(),
         fetchUserRechargeRewards(),
-        fetchUserCheckInStatus()
+        fetchUserCheckInStatus(),
+        fetchUserInvitation()
       ]);
       setUser(nextUser);
       setRewards(nextRewards);
       setCheckInStatus(nextCheckInStatus);
+      setInvitation(nextInvitation);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '加载用户信息失败');
     } finally {
@@ -404,6 +433,29 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function generateInviteCode() {
+    setGeneratingInviteCode(true);
+    try {
+      const nextInvitation = await generateUserInvitationCode();
+      setInvitation(nextInvitation);
+      notifySuccess('专属邀请码已生成');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '生成邀请码失败');
+    } finally {
+      setGeneratingInviteCode(false);
+    }
+  }
+
+  async function copyInviteCode() {
+    if (!invitation?.code) return;
+    try {
+      await navigator.clipboard.writeText(invitation.code);
+      notifySuccess('邀请码已复制');
+    } catch {
+      notifyError('复制失败，请手动复制邀请码');
+    }
+  }
+
   const displayName = user?.username || user?.email || 'Sub2API 用户';
   const balance = typeof user?.balance === 'number' ? user.balance.toFixed(2) : '-';
   const totalRecharged = typeof rewards?.totalRecharged === 'number'
@@ -423,6 +475,8 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   );
   const checkInAmount = checkInStatus?.code ? Number(checkInStatus.amount).toFixed(2) : '-';
   const checkInDate = checkInStatus?.signDate ?? formatToday();
+  const checkInGroupLink = checkInStatus?.groupLink?.trim() ?? '';
+  const publicSocialPrizeTiers = Array.isArray(checkInStatus?.socialPrizeTiers) ? checkInStatus.socialPrizeTiers : [];
   const socialBindings = Array.isArray(user?.socialBindings) ? user.socialBindings : [];
 
   return (
@@ -505,6 +559,113 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           <div className="checkin-code-line">
             <span>入账凭证</span>
             <strong>{checkInStatus.code}</strong>
+          </div>
+        )}
+        <div className="checkin-note-line">
+          <span>站内签到按当前规则发放，群内签到奖励概率公开如下。</span>
+          {checkInGroupLink ? (
+            <a href={checkInGroupLink} target="_blank" rel="noreferrer">
+              <ExternalLink size={15} />
+              群链接
+            </a>
+          ) : (
+            <strong>群链接暂未设置</strong>
+          )}
+        </div>
+        <div className="checkin-probability-panel">
+          <div className="checkin-probability-head">
+            <div>
+              <CircleDollarSign size={17} />
+              <strong>群内签到金额概率</strong>
+            </div>
+            <span>合计 {publicSocialPrizeTiers.reduce((total, tier) => total + Number(tier.probability || 0), 0).toFixed(2)}%</span>
+          </div>
+          {publicSocialPrizeTiers.length > 0 ? (
+            <div className="checkin-probability-list">
+              {publicSocialPrizeTiers.map((tier) => {
+                const probability = Number(tier.probability || 0);
+                return (
+                  <div className="checkin-probability-row" key={`${tier.amount}-${tier.probability}`}>
+                    <strong>{Number(tier.amount).toFixed(2)} 余额</strong>
+                    <div className="probability-track" aria-hidden="true">
+                      <span style={{ width: `${Math.min(100, Math.max(0, probability))}%` }} />
+                    </div>
+                    <span>{probability.toFixed(2)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="amount-stats-empty">群内签到概率暂未配置</div>
+          )}
+        </div>
+      </section>
+
+      <section className="user-invitation-panel">
+        <div className="invitation-panel-head">
+          <div>
+            <span className="eyebrow">Invitation</span>
+            <h2>邀请新用户</h2>
+            <p>将专属邀请码发送到 QQ 群 799128896，由新人通过机器人返回的绑定链接完成邀请。</p>
+          </div>
+          <div className={`invitation-status ${invitation?.enabled ? 'is-active' : ''}`}>
+            {invitation?.enabled ? `每位奖励 ${Number(invitation.rewardAmount).toFixed(2)}` : '活动暂未启用'}
+          </div>
+        </div>
+        <div className="invitation-code-row">
+          <div className="invitation-code-box">
+            <span>我的邀请码</span>
+            <strong>{invitation?.code || '尚未生成'}</strong>
+          </div>
+          {invitation?.code ? (
+            <button className="ghost-btn" type="button" onClick={copyInviteCode} title="复制邀请码">
+              <Copy size={17} />
+              复制
+            </button>
+          ) : (
+            <button className="primary-btn" type="button" onClick={generateInviteCode} disabled={loading || generatingInviteCode}>
+              <Gift size={18} />
+              {generatingInviteCode ? '生成中...' : '生成邀请码'}
+            </button>
+          )}
+        </div>
+        <div className="invitation-guide">
+          <div className="invitation-guide-head">
+            <UserPlus size={17} />
+            <strong>如何完成一次有效邀请</strong>
+          </div>
+          <ol>
+            <li>
+              <span>1</span>
+              <div>让新人加入 QQ 群 <strong>799128896</strong>{checkInGroupLink && <>，也可点击上方群链接加入</>}。</div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>新人先注册 Sub2API 账号，账号创建时间必须晚于 <strong>{formatOptionalDate(invitation?.afterTime)}</strong>。</div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>新人在群里发送 <code>@咕咕嘎嘎 绑定{invitation?.code || '你的邀请码'}</code>。</div>
+            </li>
+            <li>
+              <span>4</span>
+              <div>机器人会返回专属绑定链接，链接包含平台账号和邀请码，请勿转发给其他人。</div>
+            </li>
+            <li>
+              <span>5</span>
+              <div>新人点击链接并成功登录一次即完成绑定；成功后邀请人获得 <strong>{Number(invitation?.rewardAmount ?? 0).toFixed(2)} 余额</strong>。</div>
+            </li>
+          </ol>
+        </div>
+        <div className="invitation-metrics">
+          <div><span>成功邀请</span><strong>{invitation?.successfulInvites ?? 0}</strong></div>
+          <div><span>累计奖励</span><strong>{Number(invitation?.totalReward ?? 0).toFixed(2)}</strong></div>
+          <div><span>新人时间门槛</span><strong>{formatOptionalDate(invitation?.afterTime)}</strong></div>
+        </div>
+        {invitation?.invitedByCode && (
+          <div className="invitation-bound-note">
+            <UserPlus size={16} />
+            当前账号已通过邀请码 {invitation.invitedByCode} 完成邀请绑定
           </div>
         )}
       </section>
@@ -688,6 +849,12 @@ function Dashboard({
   const [rechargeClaimTotalPages, setRechargeClaimTotalPages] = useState(1);
   const [editingRechargeActivity, setEditingRechargeActivity] = useState<RechargeActivity | null>(null);
   const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
+  const [invitationRecords, setInvitationRecords] = useState<InvitationRecord[]>([]);
+  const [invitationRecordKeyword, setInvitationRecordKeyword] = useState('');
+  const [invitationRecordStatus, setInvitationRecordStatus] = useState('');
+  const [invitationRecordPage, setInvitationRecordPage] = useState(0);
+  const [invitationRecordTotalPages, setInvitationRecordTotalPages] = useState(1);
+  const [invitationRecordTotal, setInvitationRecordTotal] = useState(0);
   const [dailyMaxUsers, setDailyMaxUsers] = useState(0);
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
   const [dailyLimitMode, setDailyLimitMode] = useState<'shared' | 'separate'>('shared');
@@ -700,10 +867,14 @@ function Dashboard({
   const [prizeTierDrafts, setPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
   const [socialPrizeTiers, setSocialPrizeTiers] = useState<PrizeTierSetting[]>([]);
   const [socialPrizeTierDrafts, setSocialPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
+  const [groupLink, setGroupLink] = useState('');
+  const [groupLinkDraft, setGroupLinkDraft] = useState('');
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(emptyAdminSettings);
   const [adminSettingsDraft, setAdminSettingsDraft] = useState<AdminSettings>(emptyAdminSettings);
   const [sub2api, setSub2api] = useState<Sub2APISettings>(emptySub2APISettings);
   const [sub2apiDraft, setSub2apiDraft] = useState<Sub2APISettings>(emptySub2APISettings);
+  const [invitationSettings, setInvitationSettings] = useState<InvitationSettings>(emptyInvitationSettings);
+  const [invitationSettingsDraft, setInvitationSettingsDraft] = useState<InvitationSettings>(emptyInvitationSettings);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [groupRateMonitor, setGroupRateMonitor] = useState<Sub2APIGroupRateMonitor>(emptyGroupRateMonitor);
@@ -769,11 +940,20 @@ function Dashboard({
     setPrizeTierDrafts(toPrizeTierDrafts(directTiers));
     setSocialPrizeTiers(Array.isArray(socialTiers) ? socialTiers : []);
     setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
+    setGroupLink(settingsData.groupLink ?? '');
+    setGroupLinkDraft(settingsData.groupLink ?? '');
     const nextAdmin = settingsData.admin ?? emptyAdminSettings;
     setAdminSettings(nextAdmin);
     setAdminSettingsDraft({ ...nextAdmin, password: '' });
     setSub2api(settingsData.sub2api ?? emptySub2APISettings);
     setSub2apiDraft(toSub2APIDraft(settingsData.sub2api ?? emptySub2APISettings));
+    const nextInvitation = settingsData.invitation ?? emptyInvitationSettings;
+    const invitationDraft = {
+      ...nextInvitation,
+      afterTime: toDateTimeLocal(nextInvitation.afterTime)
+    };
+    setInvitationSettings(invitationDraft);
+    setInvitationSettingsDraft(invitationDraft);
   }
 
   async function loadCheckInSettings() {
@@ -856,6 +1036,30 @@ function Dashboard({
     }
   }
 
+  async function loadInvitationRecords(
+    nextPage = invitationRecordPage,
+    filters = { keyword: invitationRecordKeyword, status: invitationRecordStatus }
+  ) {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await fetchInvitationRecords({
+        keyword: filters.keyword,
+        status: filters.status,
+        page: nextPage,
+        size: 20
+      });
+      setInvitationRecords(result.content);
+      setInvitationRecordPage(result.number);
+      setInvitationRecordTotalPages(Math.max(result.totalPages, 1));
+      setInvitationRecordTotal(result.totalElements);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '加载邀请记录失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function checkSystemUpdate(showNotice = false) {
     setSystemUpdateChecking(true);
     setError('');
@@ -922,6 +1126,9 @@ function Dashboard({
     if (activeSection === 'recharge') {
       loadRechargeActivities();
     }
+    if (activeSection === 'invitations') {
+      loadInvitationRecords(0);
+    }
     if (activeSection === 'checkins') {
       load(0);
       loadCheckInStats();
@@ -937,6 +1144,7 @@ function Dashboard({
   const amountOptions = useMemo(() => toAmountOptions(stats.amountStats, [...prizeTierDrafts, ...socialPrizeTierDrafts]), [stats.amountStats, prizeTierDrafts, socialPrizeTierDrafts]);
   const navItems = [
     { key: 'recharge' as const, label: '充值活动', icon: CircleDollarSign },
+    { key: 'invitations' as const, label: '邀请记录', icon: UserPlus },
     { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
     { key: 'favorites' as const, label: '网站收藏', icon: Bookmark },
     { key: 'rates' as const, label: '倍率监控', icon: Globe2 },
@@ -948,9 +1156,19 @@ function Dashboard({
     { value: 'PENDING', label: '处理中' },
     { value: 'FAILED', label: '失败' }
   ];
+  const invitationRecordStatusOptions = [
+    { value: '', label: '全部状态' },
+    { value: 'REWARDED', label: '已奖励' },
+    { value: 'PENDING', label: '处理中' },
+    { value: 'FAILED', label: '失败' }
+  ];
 
   function rechargeClaimStatusText(value: string) {
     return rechargeClaimStatusOptions.find((item) => item.value === value)?.label ?? value;
+  }
+
+  function invitationRecordStatusText(value: string) {
+    return invitationRecordStatusOptions.find((item) => item.value === value)?.label ?? value;
   }
 
   function logout() {
@@ -1008,6 +1226,19 @@ function Dashboard({
       notifyError('后台管理员账号不能为空');
       return;
     }
+    const invitationAmount = Number(invitationSettingsDraft.amount);
+    if (!Number.isFinite(invitationAmount) || invitationAmount < 0) {
+      notifyError('邀请奖励金额必须是大于等于 0 的数字');
+      return;
+    }
+    if ((invitationSettingsDraft.afterTime && invitationAmount <= 0) || (!invitationSettingsDraft.afterTime && invitationAmount > 0)) {
+      notifyError('邀请活动的新人时间门槛和奖励金额必须同时设置');
+      return;
+    }
+    const parsedInvitation: InvitationSettings = {
+      afterTime: invitationSettingsDraft.afterTime ? new Date(invitationSettingsDraft.afterTime).toISOString() : '',
+      amount: invitationAmount
+    };
 
     setSettingsSaving(true);
     setSettingsSaved(false);
@@ -1019,7 +1250,7 @@ function Dashboard({
         return;
       }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, parsedAdminSettings, parsedSub2API);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), parsedAdminSettings, parsedSub2API, parsedInvitation);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1037,11 +1268,17 @@ function Dashboard({
       setPrizeTierDrafts(toPrizeTierDrafts(directTiers));
       setSocialPrizeTiers(socialTiers);
       setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
+      setGroupLink(settings.groupLink ?? '');
+      setGroupLinkDraft(settings.groupLink ?? '');
       const savedAdmin = settings.admin ?? emptyAdminSettings;
       setAdminSettings(savedAdmin);
       setAdminSettingsDraft({ ...savedAdmin, password: '' });
       setSub2api(settings.sub2api);
       setSub2apiDraft(toSub2APIDraft(settings.sub2api));
+      const savedInvitation = settings.invitation ?? emptyInvitationSettings;
+      const savedInvitationDraft = { ...savedInvitation, afterTime: toDateTimeLocal(savedInvitation.afterTime) };
+      setInvitationSettings(savedInvitationDraft);
+      setInvitationSettingsDraft(savedInvitationDraft);
       setSettingsSaved(true);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '保存设置失败');
@@ -1359,12 +1596,58 @@ function Dashboard({
                 </label>
               </>
             )}
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, groupLink, groupLinkDraft, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft, invitationSettings, invitationSettingsDraft)}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
             {settingsSaved && <span className="settings-saved">已保存</span>}
           </div>
+        </div>
+
+        <label className="checkin-link-field">
+          群链接
+          <input
+            value={groupLinkDraft}
+            onChange={(event) => {
+              setGroupLinkDraft(event.target.value);
+              setSettingsSaved(false);
+            }}
+            placeholder="https://..."
+          />
+        </label>
+
+        <div className="invitation-settings-editor">
+          <div className="settings-title">
+            <UserPlus size={18} />
+            <span>邀请奖励</span>
+          </div>
+          <div className="invitation-settings-grid">
+            <label>
+              新人账号创建时间必须晚于
+              <input
+                type="datetime-local"
+                value={invitationSettingsDraft.afterTime}
+                onChange={(event) => {
+                  setInvitationSettingsDraft((current) => ({ ...current, afterTime: event.target.value }));
+                  setSettingsSaved(false);
+                }}
+              />
+            </label>
+            <label>
+              每次成功邀请奖励余额
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={invitationSettingsDraft.amount}
+                onChange={(event) => {
+                  setInvitationSettingsDraft((current) => ({ ...current, amount: Number(event.target.value) }));
+                  setSettingsSaved(false);
+                }}
+              />
+            </label>
+          </div>
+          <p>只有通过群机器人链接完成社交账号绑定，且 Sub2API 账号创建时间严格晚于该门槛，邀请人才会获得奖励。</p>
         </div>
 
         <div className="checkin-tier-grid">
@@ -1703,6 +1986,108 @@ function Dashboard({
         <button disabled={favoritePage + 1 >= favoriteTotalPages} onClick={() => loadFavoriteSites(favoritePage + 1)}>下一页</button>
       </footer>
         </>
+      )}
+
+      {activeSection === 'invitations' && (
+        <section className="table-panel invitation-record-panel">
+          <form
+            className="toolbar invitation-record-toolbar"
+            onSubmit={(event) => {
+              event.preventDefault();
+              loadInvitationRecords(0);
+            }}
+          >
+            <div className="settings-title invitation-record-title">
+              <UserPlus size={18} />
+              <span>邀请记录</span>
+              <strong>{invitationRecordTotal}</strong>
+            </div>
+            <div className="search-box">
+              <Search size={17} />
+              <input
+                value={invitationRecordKeyword}
+                onChange={(event) => setInvitationRecordKeyword(event.target.value)}
+                placeholder="邀请码、用户 ID、平台账号"
+              />
+            </div>
+            <select value={invitationRecordStatus} onChange={(event) => setInvitationRecordStatus(event.target.value)}>
+              {invitationRecordStatusOptions.map((item) => (
+                <option key={item.value || 'all'} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+            <button className="ghost-btn" type="submit" disabled={loading}>
+              <Search size={17} />
+              查询
+            </button>
+            <button
+              className="ghost-btn"
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setInvitationRecordKeyword('');
+                setInvitationRecordStatus('');
+                loadInvitationRecords(0, { keyword: '', status: '' });
+              }}
+            >
+              <CheckCircle2 size={17} />
+              刷新
+            </button>
+          </form>
+
+          <div className="invitation-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>邀请码</th>
+                  <th>邀请人</th>
+                  <th>新用户</th>
+                  <th>平台账号</th>
+                  <th>新人注册时间</th>
+                  <th>奖励</th>
+                  <th>状态</th>
+                  <th>绑定 / 发放时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invitationRecords.map((record) => (
+                  <tr key={record.id}>
+                    <td><code>{record.inviteCode}</code></td>
+                    <td><strong>UID {record.inviterUserId}</strong></td>
+                    <td><strong>UID {record.inviteeUserId}</strong></td>
+                    <td>
+                      <strong>{formatPlatformName(record.platform)}</strong>
+                      <small>{record.externalUserId}</small>
+                    </td>
+                    <td>{formatDateTime(record.inviteeCreatedAt)}</td>
+                    <td>{Number(record.rewardAmount).toFixed(2)}</td>
+                    <td>
+                      <span className={`claim-status claim-${record.rewardStatus === 'REWARDED' ? 'claimed' : record.rewardStatus.toLowerCase()}`}>
+                        {invitationRecordStatusText(record.rewardStatus)}
+                      </span>
+                      {record.errorMessage && <small className="claim-error invitation-error">{record.errorMessage}</small>}
+                    </td>
+                    <td>
+                      <strong>{formatDateTime(record.createdAt)}</strong>
+                      <small>{record.rewardedAt ? `发放 ${formatDateTime(record.rewardedAt)}` : '尚未发放'}</small>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && invitationRecords.length === 0 && (
+                  <tr><td colSpan={8} className="empty-cell">暂无邀请记录</td></tr>
+                )}
+                {loading && invitationRecords.length === 0 && (
+                  <tr><td colSpan={8} className="empty-cell">加载中...</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <footer className="pager">
+            <button disabled={invitationRecordPage <= 0 || loading} onClick={() => loadInvitationRecords(invitationRecordPage - 1)}>上一页</button>
+            <span>{invitationRecordPage + 1} / {invitationRecordTotalPages}</span>
+            <button disabled={invitationRecordPage + 1 >= invitationRecordTotalPages || loading} onClick={() => loadInvitationRecords(invitationRecordPage + 1)}>下一页</button>
+          </footer>
+        </section>
       )}
 
       {activeSection === 'recharge' && (
@@ -2102,7 +2487,7 @@ function Dashboard({
               <Settings2 size={18} />
               <span>系统设置</span>
             </div>
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, groupLink, groupLinkDraft, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft, invitationSettings, invitationSettingsDraft)}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
@@ -2161,6 +2546,49 @@ function Dashboard({
             {systemUpdateOutput && (
               <pre className="system-update-output">{systemUpdateOutput}</pre>
             )}
+          </div>
+
+          <div className="sub2api-editor standalone invitation-system-panel">
+            <div className="tier-editor-head">
+              <div className="settings-title">
+                <UserPlus size={18} />
+                <span>邀请规则</span>
+              </div>
+              <span className={`invitation-status ${invitationSettingsDraft.afterTime && Number(invitationSettingsDraft.amount) > 0 ? 'is-active' : ''}`}>
+                {invitationSettingsDraft.afterTime && Number(invitationSettingsDraft.amount) > 0 ? '已启用' : '未启用'}
+              </span>
+            </div>
+            <div className="sub2api-grid invitation-system-grid">
+              <label>
+                新用户注册时间限制
+                <input
+                  type="datetime-local"
+                  value={invitationSettingsDraft.afterTime}
+                  onChange={(event) => {
+                    setInvitationSettingsDraft((current) => ({ ...current, afterTime: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                />
+              </label>
+              <label>
+                邀请人获得余额
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={invitationSettingsDraft.amount}
+                  onChange={(event) => {
+                    setInvitationSettingsDraft((current) => ({ ...current, amount: Number(event.target.value) }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder="例如 5.00"
+                />
+              </label>
+            </div>
+            <div className="system-update-note invitation-rule-note">
+              <span>只有 Sub2API 账号创建时间严格晚于该时间，且通过群机器人链接完成绑定，邀请人才会获得余额。</span>
+              <span>时间和金额同时留空或设为 0 时，邀请奖励功能关闭。</span>
+            </div>
           </div>
 
           <div className="sub2api-editor standalone">

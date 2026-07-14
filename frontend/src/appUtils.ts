@@ -8,7 +8,8 @@ import {
   RechargeRewardTier,
   SocialBindingPayload,
   Stats,
-  Sub2APISettings
+  Sub2APISettings,
+  InvitationSettings
 } from './api';
 import { DashboardSection, emptyStats } from './appConstants';
 
@@ -81,7 +82,12 @@ export function getPendingSocialBindingFromURL(): SocialBindingPayload | null {
   if (!platform || !userId) {
     return null;
   }
-  return { platform, userId };
+  const inviteCode = params.get('invitecode')?.trim().toUpperCase() ?? '';
+  return { platform, userId, ...(inviteCode ? { inviteCode } : {}) };
+}
+
+export function getInviteCodeFromURL() {
+  return new URLSearchParams(window.location.search).get('invitecode')?.trim().toUpperCase() ?? '';
 }
 
 export async function bindPendingSocialAccount(binding: SocialBindingPayload | null) {
@@ -90,7 +96,12 @@ export async function bindPendingSocialAccount(binding: SocialBindingPayload | n
   }
   try {
     const result = await bindSocialAccount(binding);
-    if (result.bound) {
+    if (result.invitation?.message) {
+      const socialNotice = result.bound
+        ? `已绑定 ${result.platform} 账号 ${result.externalUserId}；`
+        : `当前账号已绑定 ${result.platform}；`;
+      sessionStorage.setItem('social_binding_notice', `${socialNotice}${result.invitation.message}`);
+    } else if (result.bound) {
       sessionStorage.setItem('social_binding_notice', `已绑定 ${result.platform} 账号 ${result.externalUserId}`);
     } else if (result.alreadyBound) {
       sessionStorage.setItem('social_binding_notice', `当前账号已绑定 ${result.platform}，本次不会覆盖`);
@@ -129,6 +140,8 @@ export function sectionTitle(section: DashboardSection) {
   switch (section) {
     case 'checkins':
       return '签到管理';
+    case 'invitations':
+      return '邀请记录';
     case 'favorites':
       return '网站收藏';
     case 'recharge':
@@ -141,7 +154,7 @@ export function sectionTitle(section: DashboardSection) {
 }
 
 export function isDashboardSection(value: unknown): value is DashboardSection {
-  return ['checkins', 'favorites', 'recharge', 'rates', 'system'].includes(String(value));
+  return ['checkins', 'invitations', 'favorites', 'recharge', 'rates', 'system'].includes(String(value));
 }
 
 export function normalizeStats(stats: Stats): Stats {
@@ -268,10 +281,14 @@ export function settingsChanged(
   directPrizeTierDrafts: { amount: string; probability: string }[],
   socialPrizeTiers: PrizeTierSetting[],
   socialPrizeTierDrafts: { amount: string; probability: string }[],
+  groupLink: string,
+  groupLinkDraft: string,
   admin: AdminSettings,
   adminDraft: AdminSettings,
   sub2api: Sub2APISettings,
-  sub2apiDraft: Sub2APISettings
+  sub2apiDraft: Sub2APISettings,
+  invitation: InvitationSettings,
+  invitationDraft: InvitationSettings
 ) {
   if (dailyMaxUsersDraft !== String(dailyMaxUsers)) {
     return true;
@@ -291,10 +308,16 @@ export function settingsChanged(
   if (JSON.stringify(toPrizeTierDrafts(socialPrizeTiers)) !== JSON.stringify(socialPrizeTierDrafts)) {
     return true;
   }
+  if (groupLinkDraft !== groupLink) {
+    return true;
+  }
   if (adminDraft.username !== admin.username) {
     return true;
   }
   if ((adminDraft.password ?? '') !== '') {
+    return true;
+  }
+  if (invitation.afterTime !== invitationDraft.afterTime || Number(invitation.amount) !== Number(invitationDraft.amount)) {
     return true;
   }
   return JSON.stringify(toSub2APIDraft(sub2api)) !== JSON.stringify(sub2apiDraft);

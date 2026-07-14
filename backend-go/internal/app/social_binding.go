@@ -10,17 +10,19 @@ import (
 )
 
 type SocialBindingRequest struct {
-	Platform string `json:"platform"`
-	UserID   string `json:"userId"`
+	Platform   string `json:"platform"`
+	UserID     string `json:"userId"`
+	InviteCode string `json:"inviteCode"`
 }
 
 type SocialBindingResponse struct {
-	ID             uint64 `json:"id"`
-	Platform       string `json:"platform"`
-	ExternalUserID string `json:"externalUserId"`
-	Bound          bool   `json:"bound"`
-	AlreadyBound   bool   `json:"alreadyBound"`
-	Message        string `json:"message"`
+	ID             uint64                   `json:"id"`
+	Platform       string                   `json:"platform"`
+	ExternalUserID string                   `json:"externalUserId"`
+	Bound          bool                     `json:"bound"`
+	AlreadyBound   bool                     `json:"alreadyBound"`
+	Message        string                   `json:"message"`
+	Invitation     *InvitationBindingResult `json:"invitation,omitempty"`
 }
 
 func (app *App) bindSocialAccount(c *gin.Context) {
@@ -48,6 +50,23 @@ func (app *App) bindSocialAccount(c *gin.Context) {
 		}
 		serverError(c, err)
 		return
+	}
+	inviteCode := strings.TrimSpace(req.InviteCode)
+	if inviteCode != "" {
+		if resp.ExternalUserID != externalUserID {
+			conflict(c, "当前账号已绑定该平台的其他用户，不能完成邀请绑定")
+			return
+		}
+		invitation, err := app.bindInvitation(c.Request.Context(), user, inviteCode, platform, externalUserID)
+		if err != nil {
+			if isBusinessConflict(err) {
+				conflict(c, err.Error())
+				return
+			}
+			respondSub2APIError(c, err)
+			return
+		}
+		resp.Invitation = &invitation
 	}
 	c.JSON(http.StatusOK, resp)
 }

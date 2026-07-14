@@ -13,6 +13,9 @@ const (
 	claimPending        = "PENDING"
 	claimClaimed        = "CLAIMED"
 	claimFailed         = "FAILED"
+	inviteRewardPending = "PENDING"
+	inviteRewarded      = "REWARDED"
+	inviteRewardFailed  = "FAILED"
 	checkInMethodDirect = "direct"
 	checkInMethodSocial = "social"
 
@@ -22,6 +25,9 @@ const (
 	socialDailyMaxUsersKey = "check_in.social_daily_max_users"
 	prizeTiersKey          = "check_in.prize_tiers"
 	socialPrizeTiersKey    = "check_in.social_prize_tiers"
+	checkInGroupLinkKey    = "check_in.group_link"
+	invitationAfterTimeKey = "invitation.after_time"
+	invitationAmountKey    = "invitation.amount"
 
 	adminUsernameKey     = "admin.username"
 	adminPasswordHashKey = "admin.password_hash"

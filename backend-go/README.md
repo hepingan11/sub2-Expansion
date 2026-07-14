@@ -13,6 +13,32 @@
 - `GET /api/admin/settings/check-in`
 - `PUT /api/admin/settings/check-in`
 - `POST /api/checkins`
+- `POST /api/checkins/social`（群机器人签到/邀请绑定入口）
+- `GET /api/user/invitation`
+- `POST /api/user/invitation/code`
+- `GET /api/admin/invitations`（管理员分页查看邀请记录）
+
+## 群机器人邀请绑定
+
+机器人收到 `@咕咕嘎嘎 绑定邀请码` 后，请调用：
+
+```http
+POST /api/checkins/social
+Content-Type: application/json
+
+{
+  "platform": "qq",
+  "userId": "群成员平台用户ID",
+  "inviteCode": "ABCDEFGH"
+}
+```
+
+未绑定时接口返回 `404`、`code=SOCIAL_ACCOUNT_NOT_BOUND`，并在 `bindingUrl` 中返回带有
+`platform`、`userid`、`invitecode` 的登录链接。机器人应直接把该链接发给新人。
+
+新人登录后，扩展服务会绑定平台账号、校验 Sub2API 用户的 `created_at` 是否严格晚于管理员设置的时间门槛，随后用幂等请求给邀请人增加配置的余额。
+
+管理员邀请记录接口支持 `page`、`size`、`keyword`、`status` 和 `platform` 查询参数。`keyword` 可搜索邀请码、邀请人/新人用户 ID、平台账号 ID；`status` 可选 `REWARDED`、`PENDING`、`FAILED`。
 
 ## 启动
 
