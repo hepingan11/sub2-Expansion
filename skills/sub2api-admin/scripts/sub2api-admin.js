@@ -8,7 +8,10 @@ const EXPANSION_BASE_URL = (process.env.SUB2_EXPANSION_BASE_URL || process.env.S
 const ADMIN_API_KEY = process.env.SUB2API_ADMIN_API_KEY || "";
 const ADMIN_EMAIL = process.env.SUB2API_ADMIN_EMAIL || process.env.SUB2API_ADMIN_USERNAME || "";
 const ADMIN_PASSWORD = process.env.SUB2API_ADMIN_PASSWORD || "";
+const EXPANSION_ADMIN_USERNAME = process.env.SUB2_EXPANSION_ADMIN_USERNAME || "";
+const EXPANSION_ADMIN_PASSWORD = process.env.SUB2_EXPANSION_ADMIN_PASSWORD || "";
 let loginAccessToken = "";
+let expansionAdminToken = "";
 
 function usage() {
   console.log(`Usage:
@@ -60,7 +63,9 @@ function usage() {
   sub2api-admin.js redeem-codes expire <id>
   sub2api-admin.js redeem-codes stats
   sub2api-admin.js checkins direct --user-id USER_ID
-  sub2api-admin.js checkins social --platform PLATFORM --user-id EXTERNAL_USER_ID
+  sub2api-admin.js checkins social --platform PLATFORM --user-id EXTERNAL_USER_ID [--invite-code CODE]
+  sub2api-admin.js invitations list [--page 0] [--page-size 20] [--status PENDING|REWARDED|FAILED] [--keyword TEXT] [--platform qq]
+  sub2api-admin.js invitations stats
   sub2api-admin.js settings admin-api-key status|regenerate|delete
   sub2api-admin.js error-rules list|get|create|update|delete|toggle ...
   sub2api-admin.js tls-profiles list|get|create|update|delete ...
@@ -205,6 +210,55 @@ async function publicRequest(method, pathname, body) {
     throw new Error(`${method} ${pathname} failed: ${detail}`);
   }
   return data.data === undefined ? data : data.data;
+}
+
+async function expansionAdminTokenOnce() {
+  if (expansionAdminToken) return expansionAdminToken;
+  if (!EXPANSION_BASE_URL) throw new Error("Missing SUB2_EXPANSION_BASE_URL or SUB2API_BASE_URL");
+  if (!EXPANSION_ADMIN_USERNAME || !EXPANSION_ADMIN_PASSWORD) {
+    throw new Error("Missing SUB2_EXPANSION_ADMIN_USERNAME or SUB2_EXPANSION_ADMIN_PASSWORD");
+  }
+  const res = await fetch(`${EXPANSION_BASE_URL}/api/admin/login`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ username: EXPANSION_ADMIN_USERNAME, password: EXPANSION_ADMIN_PASSWORD }),
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+  if (!res.ok || !data.token) {
+    const detail = data.message || res.statusText;
+    throw new Error(`POST /api/admin/login failed: ${detail}`);
+  }
+  expansionAdminToken = data.token;
+  return expansionAdminToken;
+}
+
+async function expansionAdminRequest(method, pathname) {
+  if (!EXPANSION_BASE_URL) throw new Error("Missing SUB2_EXPANSION_BASE_URL or SUB2API_BASE_URL");
+  const res = await fetch(`${EXPANSION_BASE_URL}${pathname}`, {
+    method,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${await expansionAdminTokenOnce()}`,
+    },
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+  if (!res.ok) {
+    const detail = data.message || res.statusText;
+    throw new Error(`${method} ${pathname} failed: ${detail}`);
+  }
+  return data;
 }
 
 function encodeQuery(params) {
@@ -743,10 +797,31 @@ async function commandCheckins(args) {
     const platform = args.flags.platform || args.flags["platform-type"];
     if (!platform) throw new Error("checkins social requires --platform");
     if (!userID) throw new Error("checkins social requires --user-id");
-    printJson(await publicRequest("POST", "/api/checkins/social", { platform, userId: userID }));
+    const inviteCode = args.flags["invite-code"] || args.flags.inviteCode;
+    printJson(await publicRequest("POST", "/api/checkins/social", { platform, userId: userID, ...(inviteCode ? { inviteCode } : {}) }));
     return;
   }
   throw new Error(`unknown checkins subcommand: ${sub || "(missing)"}`);
+}
+
+async function commandInvitations(args) {
+  const sub = args.positional[1];
+  if (sub === "list") {
+    const query = encodeQuery({
+      page: args.flags.page === undefined ? 0 : Number(args.flags.page),
+      size: args.flags["page-size"] === undefined ? 20 : Number(args.flags["page-size"]),
+      status: args.flags.status,
+      keyword: args.flags.keyword,
+      platform: args.flags.platform,
+    });
+    printJson(await expansionAdminRequest("GET", `/api/admin/invitations${query}`));
+    return;
+  }
+  if (sub === "stats") {
+    printJson(await expansionAdminRequest("GET", "/api/admin/invitation-stats"));
+    return;
+  }
+  throw new Error(`unknown invitations subcommand: ${sub || "(missing)"}`);
 }
 
 async function commandCrudResource(args, name, basePath, options = {}) {
@@ -838,6 +913,10 @@ async function main() {
   }
   if (root === "checkins") {
     await commandCheckins(args);
+    return;
+  }
+  if (root === "invitations") {
+    await commandInvitations(args);
     return;
   }
   if (root === "settings") {

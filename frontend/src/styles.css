@@ -1136,6 +1136,37 @@ textarea {
   margin-top: 16px;
 }
 
+.recharge-reward-stats {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.4fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.recharge-reward-total,
+.recharge-reward-chart-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.recharge-reward-total {
+  align-content: center;
+}
+
+.recharge-reward-total span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.recharge-reward-total strong {
+  color: var(--ink);
+  font-size: 28px;
+}
+
 .recharge-claim-toolbar {
   grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.2fr) 150px auto auto;
   margin-bottom: 12px;
@@ -1144,6 +1175,16 @@ textarea {
 .invitation-record-toolbar {
   grid-template-columns: minmax(180px, 0.8fr) minmax(280px, 1.4fr) 150px auto auto;
   padding: 14px 14px 0;
+}
+
+.invitation-trend-chart-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
 }
 
 .invitation-record-title {
@@ -2476,6 +2517,10 @@ tr:last-child td {
   }
 
   .checkin-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recharge-reward-stats {
     grid-template-columns: 1fr;
   }
 

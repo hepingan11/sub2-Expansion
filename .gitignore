@@ -8,3 +8,6 @@ dist/
 .env
 logs/
 sub2api/
+backend-go/.env
+.env.*
+!.env.example

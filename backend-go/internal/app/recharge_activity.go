@@ -209,6 +209,52 @@ func (app *App) listAdminRechargeRewardClaims(c *gin.Context) {
 	})
 }
 
+func (app *App) getAdminRechargeRewardStats(c *gin.Context) {
+	today := Today()
+	start := LocalDate{Time: today.AddDate(0, 0, -29)}
+	tomorrow := today.AddDate(0, 0, 1)
+
+	var total Amount
+	if err := app.db.Model(&RechargeRewardClaim{}).
+		Select("COALESCE(SUM(reward_amount), 0)").
+		Where("status = ?", claimClaimed).
+		Scan(&total).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	type dailyRow struct {
+		RewardDate LocalDate `gorm:"column:reward_date"`
+		Amount     Amount    `gorm:"column:amount"`
+	}
+	rows := []dailyRow{}
+	if err := app.db.Model(&RechargeRewardClaim{}).
+		Select("updated_at::date AS reward_date, COALESCE(SUM(reward_amount), 0) AS amount").
+		Where("status = ? AND updated_at >= ? AND updated_at < ?", claimClaimed, start.Time, tomorrow).
+		Group("updated_at::date").
+		Order("reward_date ASC").
+		Scan(&rows).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	amountByDate := make(map[string]Amount, len(rows))
+	for _, row := range rows {
+		amountByDate[row.RewardDate.Format("2006-01-02")] = row.Amount
+	}
+	daily := make([]DailyRechargeRewardStat, 0, 30)
+	for day := start.Time; !day.After(today.Time); day = day.AddDate(0, 0, 1) {
+		date := LocalDate{Time: day}
+		amount, ok := amountByDate[date.Format("2006-01-02")]
+		if !ok {
+			amount = Amount{Decimal: decimal.Zero}
+		}
+		daily = append(daily, DailyRechargeRewardStat{RewardDate: date, Amount: amount})
+	}
+
+	c.JSON(http.StatusOK, RechargeRewardStatsResponse{TotalRewardAmount: total, Daily: daily})
+}
+
 func (app *App) listUserRechargeRewards(c *gin.Context) {
 	user, ok := sub2APIUserFromContext(c)
 	if !ok {
@@ -293,17 +339,17 @@ func (app *App) claimRechargeReward(c *gin.Context) {
 		return
 	}
 
-	redeemCode := rechargeRewardCode(activityID, tierID, user.ID)
-	if err := app.createAndRedeemSub2APIBalance(c.Request.Context(), user.ID, tier.RewardAmount, redeemCode, fmt.Sprintf("Recharge reward: %s", activity.Name)); err != nil {
+	idempotencyKey := rechargeRewardIdempotencyKey(activityID, tierID, user.ID)
+	if err := app.addSub2APIUserBalance(c.Request.Context(), user.ID, tier.RewardAmount, idempotencyKey, fmt.Sprintf("Recharge reward: %s", activity.Name)); err != nil {
 		_ = app.markRechargeRewardClaimFailed(claim.ID, err.Error())
 		respondSub2APIError(c, err)
 		return
 	}
-	if err := app.markRechargeRewardClaimClaimed(claim.ID, redeemCode); err != nil {
+	if err := app.markRechargeRewardClaimClaimed(claim.ID); err != nil {
 		serverError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, ClaimRechargeRewardResponse{ClaimID: claim.ID, RedeemCode: redeemCode, RewardAmount: tier.RewardAmount})
+	c.JSON(http.StatusOK, ClaimRechargeRewardResponse{ClaimID: claim.ID, RewardAmount: tier.RewardAmount})
 }
 
 type rechargeActivityWithTiers struct {
@@ -444,10 +490,10 @@ func (app *App) reserveRechargeRewardClaim(userID int64, activity RechargeActivi
 	return claim, err
 }
 
-func (app *App) markRechargeRewardClaimClaimed(claimID uint64, redeemCode string) error {
+func (app *App) markRechargeRewardClaimClaimed(claimID uint64) error {
 	return app.db.Model(&RechargeRewardClaim{}).Where("id = ?", claimID).Updates(map[string]any{
 		"status":        claimClaimed,
-		"redeem_code":   redeemCode,
+		"redeem_code":   "",
 		"error_message": "",
 		"updated_at":    time.Now(),
 	}).Error
@@ -462,77 +508,6 @@ func (app *App) markRechargeRewardClaimFailed(claimID uint64, message string) er
 		"error_message": message,
 		"updated_at":    time.Now(),
 	}).Error
-}
-
-func (app *App) createAndRedeemSub2APIBalance(ctx context.Context, userID int64, reward Amount, code string, notes string) error {
-	cfg, err := app.effectiveSub2APIConfig()
-	if err != nil {
-		return err
-	}
-	if cfg.BaseURL == "" {
-		return businessConflict("Sub2API is not configured: set SUB2API_BASE_URL")
-	}
-	authName, authValue, err := app.sub2APIAuthHeader(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	payload := map[string]any{
-		"code":    code,
-		"type":    "balance",
-		"value":   reward.InexactFloat64(),
-		"user_id": userID,
-		"notes":   notes,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 15 * time.Second
-	}
-	requestCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, cfg.BaseURL+"/api/v1/admin/redeem-codes/create-and-redeem", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
-	req.Header.Set("Idempotency-Key", rechargeRewardIdempotencyKey(code))
-	req.Header.Set(authName, authValue)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("Sub2API reward recharge failed: %w", err)
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	var envelope sub2APIEnvelope
-	if err := json.Unmarshal(respBody, &envelope); err != nil {
-		return fmt.Errorf("parse Sub2API reward response failed: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || envelope.Code != 0 {
-		message := strings.TrimSpace(envelope.Message)
-		if message == "" {
-			message = resp.Status
-		}
-		if resp.StatusCode >= http.StatusInternalServerError {
-			log.Printf("Sub2API create-and-redeem failed: status=%d user_id=%d reward=%s code=%s message=%q body=%q",
-				resp.StatusCode,
-				userID,
-				reward.StringFixed(2),
-				code,
-				message,
-				truncateLogText(string(respBody), 1024),
-			)
-		}
-		return upstreamAPIError{statusCode: resp.StatusCode, message: message}
-	}
-	return nil
 }
 
 func (app *App) addSub2APIUserBalance(ctx context.Context, userID int64, reward Amount, idempotencyKey string, notes string) error {
@@ -832,10 +807,6 @@ func pathUint64(c *gin.Context, key string) (uint64, bool) {
 	return value, true
 }
 
-func rechargeRewardCode(activityID, tierID uint64, userID int64) string {
-	return fmt.Sprintf("rr_%d_%d_%d", activityID, tierID, userID)
-}
-
-func rechargeRewardIdempotencyKey(code string) string {
-	return "recharge-reward-" + code
+func rechargeRewardIdempotencyKey(activityID, tierID uint64, userID int64) string {
+	return fmt.Sprintf("recharge-reward-%d-%d-%d", activityID, tierID, userID)
 }

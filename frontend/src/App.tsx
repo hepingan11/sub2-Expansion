@@ -47,9 +47,11 @@ import {
   fetchFavoriteSiteGroups,
   fetchFavoriteSites,
   fetchInvitationRecords,
+  fetchInvitationStats,
   fetchPublicSub2APIGroupRateSeries,
   fetchRechargeActivities,
   fetchRechargeRewardClaims,
+  fetchRechargeRewardStats,
   fetchSub2APIGroupRateMonitor,
   fetchSub2APIGroupRateLogs,
   fetchSystemUpdateCheck,
@@ -67,9 +69,11 @@ import {
   RedeemCodeStatus,
   RechargeActivity,
   RechargeActivityPayload,
+  RechargeRewardStats,
   Stats,
   InvitationSettings,
   InvitationRecord,
+  InvitationStats,
   Sub2APIGroupRateMonitor,
   Sub2APIGroupRateGroup,
   Sub2APIGroupRateLog,
@@ -133,7 +137,7 @@ import {
   updatePrizeTierDraft,
   updateSub2APIDraft
 } from './appUtils';
-import { CheckInTrendChart, RateLineChart } from './components/Charts';
+import { CheckInTrendChart, InvitationTrendChart, RateLineChart, RechargeRewardTrendChart } from './components/Charts';
 import { alertDialog, confirmDialog, FeedbackHost, notifyError, notifySuccess } from './components/Feedback';
 
 
@@ -843,6 +847,7 @@ function Dashboard({
   const [favoriteModalOpen, setFavoriteModalOpen] = useState(false);
   const [rechargeActivities, setRechargeActivities] = useState<RechargeActivity[]>([]);
   const [rechargeClaims, setRechargeClaims] = useState<AdminRechargeRewardClaim[]>([]);
+  const [rechargeRewardStats, setRechargeRewardStats] = useState<RechargeRewardStats | null>(null);
   const [rechargeClaimKeyword, setRechargeClaimKeyword] = useState('');
   const [rechargeClaimStatus, setRechargeClaimStatus] = useState('');
   const [rechargeClaimPage, setRechargeClaimPage] = useState(0);
@@ -850,6 +855,7 @@ function Dashboard({
   const [editingRechargeActivity, setEditingRechargeActivity] = useState<RechargeActivity | null>(null);
   const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
   const [invitationRecords, setInvitationRecords] = useState<InvitationRecord[]>([]);
+  const [invitationStats, setInvitationStats] = useState<InvitationStats | null>(null);
   const [invitationRecordKeyword, setInvitationRecordKeyword] = useState('');
   const [invitationRecordStatus, setInvitationRecordStatus] = useState('');
   const [invitationRecordPage, setInvitationRecordPage] = useState(0);
@@ -992,19 +998,21 @@ function Dashboard({
     setLoading(true);
     setError('');
     try {
-      const [activities, claims] = await Promise.all([
+      const [activities, claims, rewardStats] = await Promise.all([
         fetchRechargeActivities(),
         fetchRechargeRewardClaims({
           keyword: claimFilters.keyword,
           status: claimFilters.status,
           page: nextClaimPage,
           size: 10
-        })
+        }),
+        fetchRechargeRewardStats()
       ]);
       setRechargeActivities(activities);
       setRechargeClaims(claims.content);
       setRechargeClaimPage(claims.number);
       setRechargeClaimTotalPages(Math.max(claims.totalPages, 1));
+      setRechargeRewardStats(rewardStats);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '加载充值活动失败');
     } finally {
@@ -1043,16 +1051,20 @@ function Dashboard({
     setLoading(true);
     setError('');
     try {
-      const result = await fetchInvitationRecords({
-        keyword: filters.keyword,
-        status: filters.status,
-        page: nextPage,
-        size: 20
-      });
+      const [result, stats] = await Promise.all([
+        fetchInvitationRecords({
+          keyword: filters.keyword,
+          status: filters.status,
+          page: nextPage,
+          size: 20
+        }),
+        fetchInvitationStats()
+      ]);
       setInvitationRecords(result.content);
       setInvitationRecordPage(result.number);
       setInvitationRecordTotalPages(Math.max(result.totalPages, 1));
       setInvitationRecordTotal(result.totalElements);
+      setInvitationStats(stats);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '加载邀请记录失败');
     } finally {
@@ -1989,7 +2001,9 @@ function Dashboard({
       )}
 
       {activeSection === 'invitations' && (
-        <section className="table-panel invitation-record-panel">
+        <>
+          <InvitationTrendChart daily={invitationStats?.daily ?? []} />
+          <section className="table-panel invitation-record-panel">
           <form
             className="toolbar invitation-record-toolbar"
             onSubmit={(event) => {
@@ -2087,7 +2101,8 @@ function Dashboard({
             <span>{invitationRecordPage + 1} / {invitationRecordTotalPages}</span>
             <button disabled={invitationRecordPage + 1 >= invitationRecordTotalPages || loading} onClick={() => loadInvitationRecords(invitationRecordPage + 1)}>下一页</button>
           </footer>
-        </section>
+          </section>
+        </>
       )}
 
       {activeSection === 'recharge' && (
@@ -2113,6 +2128,13 @@ function Dashboard({
               <CheckCircle2 size={17} />
               刷新
             </button>
+          </section>
+          <section className="recharge-reward-stats">
+            <article className="recharge-reward-total">
+              <span>总返利金额</span>
+              <strong>{Number(rechargeRewardStats?.totalRewardAmount ?? 0).toFixed(2)}</strong>
+            </article>
+            <RechargeRewardTrendChart daily={rechargeRewardStats?.daily ?? []} />
           </section>
           <section className="favorite-card-panel recharge-admin-panel">
             <div className="favorite-card-grid">
@@ -2191,7 +2213,7 @@ function Dashboard({
                 <input
                   value={rechargeClaimKeyword}
                   onChange={(event) => setRechargeClaimKeyword(event.target.value)}
-                  placeholder="用户 ID 或兑换码"
+                  placeholder="用户 ID 或历史兑换码"
                 />
               </div>
               <select value={rechargeClaimStatus} onChange={(event) => setRechargeClaimStatus(event.target.value)}>
@@ -2226,7 +2248,7 @@ function Dashboard({
                   <th>门槛</th>
                   <th>奖励</th>
                   <th>状态</th>
-                  <th>兑换码</th>
+                  <th>入账方式</th>
                   <th>时间</th>
                 </tr>
               </thead>
@@ -2246,7 +2268,7 @@ function Dashboard({
                       </span>
                     </td>
                     <td>
-                      <code>{claim.redeemCode || '-'}</code>
+                      {claim.redeemCode ? <code>{claim.redeemCode}</code> : <span>管理员调整</span>}
                       {claim.errorMessage && <small className="claim-error">{claim.errorMessage}</small>}
                     </td>
                     <td>{formatDateTime(claim.updatedAt || claim.createdAt)}</td>

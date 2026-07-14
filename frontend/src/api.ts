@@ -248,7 +248,6 @@ export interface UserRechargeRewards {
 
 export interface ClaimRechargeRewardResult {
   claimId: number;
-  redeemCode: string;
   rewardAmount: number;
 }
 
@@ -266,6 +265,16 @@ export interface AdminRechargeRewardClaim {
   errorMessage: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DailyRechargeRewardStat {
+  rewardDate: string;
+  amount: number;
+}
+
+export interface RechargeRewardStats {
+  totalRewardAmount: number;
+  daily: DailyRechargeRewardStat[];
 }
 
 export interface SocialBindingPayload {
@@ -377,6 +386,16 @@ export interface InvitationRecord {
   rewardedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DailyInvitationStat {
+  rewardDate: string;
+  amount: number;
+  users: number;
+}
+
+export interface InvitationStats {
+  daily: DailyInvitationStat[];
 }
 
 export interface SystemUpdateResult {
@@ -619,6 +638,10 @@ export async function fetchRechargeRewardClaims(params: Record<string, string | 
   return request<PageResult<AdminRechargeRewardClaim>>(`/api/admin/recharge-reward-claims?${query.toString()}`);
 }
 
+export async function fetchRechargeRewardStats() {
+  return request<RechargeRewardStats>('/api/admin/recharge-reward-stats');
+}
+
 export async function fetchInvitationRecords(params: Record<string, string | number | undefined>) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -627,6 +650,10 @@ export async function fetchInvitationRecords(params: Record<string, string | num
     }
   });
   return request<PageResult<InvitationRecord>>(`/api/admin/invitations?${query.toString()}`);
+}
+
+export async function fetchInvitationStats() {
+  return request<InvitationStats>('/api/admin/invitation-stats');
 }
 
 export async function createRechargeActivity(payload: RechargeActivityPayload) {
