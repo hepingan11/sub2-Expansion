@@ -3,6 +3,12 @@ const TOKEN_KEY = 'redeem_admin_token';
 const USER_TOKEN_KEY = 'redeem_user_token';
 const USER_REFRESH_TOKEN_KEY = 'redeem_user_refresh_token';
 
+function redirectToLogin() {
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login');
+  }
+}
+
 export type RedeemCodeStatus = 'AVAILABLE' | 'ASSIGNED' | 'USED' | 'VOIDED';
 
 export interface RedeemCode {
@@ -652,8 +658,9 @@ async function request<T>(path: string, init: RequestInit = {}, withAuth = true)
     headers
   });
 
-  if (response.status === 401) {
+  if (withAuth && response.status === 401) {
     clearToken();
+    redirectToLogin();
     throw new Error('登录已过期，请重新登录');
   }
 
@@ -683,8 +690,9 @@ async function userRequest<T>(path: string, init: RequestInit = {}, withAuth = t
     headers
   });
 
-  if (response.status === 401) {
+  if (withAuth && response.status === 401) {
     clearUserSession();
+    redirectToLogin();
     throw new Error('用户登录已过期，请重新登录');
   }
 

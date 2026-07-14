@@ -758,6 +758,16 @@ func (app *App) buildSub2APIGroupRateSeries(settings Sub2APIGroupRateMonitorSett
 			Rate: decimalToFloat(entry.NewRate),
 		})
 	}
+	for _, snapshot := range snapshots {
+		series := seriesByID[snapshot.GroupID]
+		if series == nil {
+			continue
+		}
+		appendGroupRatePoint(series, Sub2APIGroupRatePoint{
+			Time: formatJSONTime(snapshot.LastSeenAt),
+			Rate: decimalToFloat(snapshot.RateMultiplier),
+		})
+	}
 
 	series := make([]Sub2APIGroupRateSeries, 0, len(seriesByID))
 	for _, item := range seriesByID {
@@ -770,9 +780,16 @@ func (app *App) buildSub2APIGroupRateSeries(settings Sub2APIGroupRateMonitorSett
 }
 
 func appendGroupRatePoint(series *Sub2APIGroupRateSeries, point Sub2APIGroupRatePoint) {
-	if len(series.Points) > 0 && series.Points[len(series.Points)-1].Time == point.Time {
-		series.Points[len(series.Points)-1] = point
-		return
+	if len(series.Points) > 0 {
+		lastIndex := len(series.Points) - 1
+		lastPoint := series.Points[lastIndex]
+		if point.Time < lastPoint.Time {
+			return
+		}
+		if lastPoint.Time == point.Time || lastPoint.Rate == point.Rate {
+			series.Points[lastIndex] = point
+			return
+		}
 	}
 	series.Points = append(series.Points, point)
 }
