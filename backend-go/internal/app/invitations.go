@@ -89,6 +89,44 @@ func (app *App) listAdminInvitations(c *gin.Context) {
 	})
 }
 
+func (app *App) getAdminInvitationStats(c *gin.Context) {
+	today := Today()
+	start := LocalDate{Time: today.AddDate(0, 0, -29)}
+	tomorrow := today.AddDate(0, 0, 1)
+
+	type dailyRow struct {
+		RewardDate LocalDate `gorm:"column:reward_date"`
+		Amount     Amount    `gorm:"column:amount"`
+		Users      int64     `gorm:"column:users"`
+	}
+	rows := []dailyRow{}
+	if err := app.db.Model(&InvitationBinding{}).
+		Select("rewarded_at::date AS reward_date, COALESCE(SUM(reward_amount), 0) AS amount, COUNT(*) AS users").
+		Where("reward_status = ? AND rewarded_at >= ? AND rewarded_at < ?", inviteRewarded, start.Time, tomorrow).
+		Group("rewarded_at::date").
+		Order("reward_date ASC").
+		Scan(&rows).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	byDate := make(map[string]dailyRow, len(rows))
+	for _, row := range rows {
+		byDate[row.RewardDate.Format("2006-01-02")] = row
+	}
+	daily := make([]DailyInvitationStat, 0, 30)
+	for day := start.Time; !day.After(today.Time); day = day.AddDate(0, 0, 1) {
+		date := LocalDate{Time: day}
+		row, ok := byDate[date.Format("2006-01-02")]
+		if !ok {
+			row = dailyRow{Amount: Amount{Decimal: decimal.Zero}}
+		}
+		daily = append(daily, DailyInvitationStat{RewardDate: date, Amount: row.Amount, Users: row.Users})
+	}
+
+	c.JSON(http.StatusOK, InvitationStatsResponse{Daily: daily})
+}
+
 func (app *App) getUserInvitation(c *gin.Context) {
 	user, ok := sub2APIUserFromContext(c)
 	if !ok {

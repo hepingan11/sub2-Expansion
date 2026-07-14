@@ -161,6 +161,7 @@ func (app *App) migrate() error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_recharge_reward_claim_user_tier ON recharge_reward_claims (activity_id, tier_id, user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_recharge_reward_claims_user ON recharge_reward_claims (user_id, activity_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_recharge_reward_claims_status ON recharge_reward_claims (status)`,
+		`CREATE INDEX IF NOT EXISTS idx_recharge_reward_claims_status_updated ON recharge_reward_claims (status, updated_at)`,
 		`CREATE TABLE IF NOT EXISTS social_account_bindings (
 			id BIGSERIAL PRIMARY KEY,
 			user_id BIGINT NOT NULL,
@@ -201,6 +202,7 @@ func (app *App) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_invitation_bindings_code ON invitation_bindings (invitation_code_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_invitation_bindings_inviter ON invitation_bindings (inviter_user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_invitation_bindings_status ON invitation_bindings (reward_status)`,
+		`CREATE INDEX IF NOT EXISTS idx_invitation_bindings_status_rewarded ON invitation_bindings (reward_status, rewarded_at)`,
 		`CREATE TABLE IF NOT EXISTS sub2api_group_rate_snapshots (
 			group_id VARCHAR(100) PRIMARY KEY,
 			group_name VARCHAR(200) NOT NULL,

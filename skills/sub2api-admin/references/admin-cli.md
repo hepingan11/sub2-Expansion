@@ -6,6 +6,8 @@
 export SUB2API_BASE_URL='https://your-sub2api-host'
 export SUB2API_ADMIN_API_KEY='<admin api key>'
 export SUB2_EXPANSION_BASE_URL='https://your-sub2-expansion-host'
+export SUB2_EXPANSION_ADMIN_USERNAME='admin'
+export SUB2_EXPANSION_ADMIN_PASSWORD='<expansion admin password>'
 # 或者，未配置管理员 API Key 时使用管理员账号密码登录：
 # export SUB2API_ADMIN_EMAIL='admin@example.com'
 # export SUB2API_ADMIN_PASSWORD='<admin password>'
@@ -138,9 +140,45 @@ These public Sub2 Expansion endpoints use `SUB2_EXPANSION_BASE_URL`; if it is no
 ```bash
 node scripts/sub2api-admin.js checkins direct --user-id 123
 node scripts/sub2api-admin.js checkins social --platform telegram --user-id 12345
+node scripts/sub2api-admin.js checkins social --platform qq --user-id 12345 --invite-code 6A2W7FQC
 ```
 
-For social check-in, `--user-id` is the external social-platform user ID. If the social account has not been bound to a Sub2API user, the backend returns `code: "SOCIAL_ACCOUNT_NOT_BOUND"` plus `bindingUrl`. Show that URL to the user so they can log in and bind the social account before retrying check-in.
+For social check-in, `--user-id` is the external social-platform user ID. If the social account has not been bound to a Sub2API user, the backend returns `code: "SOCIAL_ACCOUNT_NOT_BOUND"` plus `bindingUrl`. With `--invite-code`, the binding URL preserves that invitation code. Give this URL only to that social-platform user, who must log in and complete the binding themselves.
+
+## New-User Invitations
+
+The invitation feature is a Sub2 Expansion workflow, not Sub2API's `invitation` redeem-code type.
+
+1. The inviter generates or retrieves their personal code after signing in to the user page.
+2. The new user must have been created after the administrator-configured creation-time threshold.
+3. The bot requests a binding URL with the new user's platform ID and the inviter's code.
+4. The new user signs in at that URL. The backend binds the platform account and invitation, then credits the inviter.
+
+The backend rejects invalid codes, self-invites, an already-bound new user, a mismatched platform account, ineligible account creation times, and disabled invitation settings. Do not create a reward manually through a redeem code as a substitute.
+
+### Binding Link Request
+
+```bash
+node scripts/sub2api-admin.js checkins social \
+  --platform qq \
+  --user-id 123456789 \
+  --invite-code 6A2W7FQC
+```
+
+When the command returns `SOCIAL_ACCOUNT_NOT_BOUND`, send the returned `bindingUrl` privately to the matching user. It contains the platform identifier and invite code; do not publish or reuse it.
+
+### Read Invitation Records And Trends
+
+These commands authenticate against Sub2 Expansion using `SUB2_EXPANSION_ADMIN_USERNAME` and `SUB2_EXPANSION_ADMIN_PASSWORD`, which are distinct from Sub2API administrator credentials.
+
+```bash
+node scripts/sub2api-admin.js invitations list --page-size 20
+node scripts/sub2api-admin.js invitations list --status REWARDED --keyword 12345
+node scripts/sub2api-admin.js invitations list --status FAILED --platform qq
+node scripts/sub2api-admin.js invitations stats
+```
+
+Record statuses: `PENDING` means the binding exists but reward delivery is pending, `REWARDED` means the inviter was credited, and `FAILED` means delivery failed. The 30-day trend returned by `invitations stats` includes only `REWARDED` records, grouped by actual `rewarded_at` time.
 
 ## Settings
 
@@ -236,6 +274,8 @@ node scripts/sub2api-admin.js api POST /admin/accounts/bulk-update \
 
 - `POST /api/checkins`
 - `POST /api/checkins/social`
+- `GET /api/admin/invitations`
+- `GET /api/admin/invitation-stats`
 - `GET /api/v1/admin/accounts`
 - `GET /api/v1/admin/accounts/:id`
 - `POST /api/v1/admin/accounts`

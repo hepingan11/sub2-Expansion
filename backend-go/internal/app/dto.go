@@ -217,7 +217,6 @@ type UserRechargeRewardTierResponse struct {
 
 type ClaimRechargeRewardResponse struct {
 	ClaimID      uint64 `json:"claimId"`
-	RedeemCode   string `json:"redeemCode"`
 	RewardAmount Amount `json:"rewardAmount"`
 }
 
@@ -235,6 +234,26 @@ type AdminRechargeRewardClaimResponse struct {
 	ErrorMessage    string   `json:"errorMessage"`
 	CreatedAt       JSONTime `json:"createdAt"`
 	UpdatedAt       JSONTime `json:"updatedAt"`
+}
+
+type RechargeRewardStatsResponse struct {
+	TotalRewardAmount Amount                    `json:"totalRewardAmount"`
+	Daily             []DailyRechargeRewardStat `json:"daily"`
+}
+
+type DailyRechargeRewardStat struct {
+	RewardDate LocalDate `json:"rewardDate"`
+	Amount     Amount    `json:"amount"`
+}
+
+type InvitationStatsResponse struct {
+	Daily []DailyInvitationStat `json:"daily"`
+}
+
+type DailyInvitationStat struct {
+	RewardDate LocalDate `json:"rewardDate"`
+	Amount     Amount    `json:"amount"`
+	Users      int64     `json:"users"`
 }
 
 type PageResponse[T any] struct {
