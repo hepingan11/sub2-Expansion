@@ -9,7 +9,8 @@ import {
   SocialBindingPayload,
   Stats,
   Sub2APISettings,
-  InvitationSettings
+  InvitationSettings,
+  TelegramSettings
 } from './api';
 import { DashboardSection, emptyStats } from './appConstants';
 
@@ -211,6 +212,31 @@ export function parseSub2APIDraft(draft: Sub2APISettings): Sub2APISettings | str
   };
 }
 
+export function toTelegramDraft(settings: TelegramSettings): TelegramSettings {
+  return {
+    ...settings,
+    botToken: '',
+    apiBaseUrl: settings.apiBaseUrl || 'https://api.telegram.org',
+    pollIntervalSeconds: settings.pollIntervalSeconds || 2
+  };
+}
+
+export function parseTelegramDraft(draft: TelegramSettings): TelegramSettings | string {
+  const pollIntervalSeconds = Number(draft.pollIntervalSeconds);
+  if (!Number.isInteger(pollIntervalSeconds) || pollIntervalSeconds <= 0) {
+    return 'Telegram 轮询间隔必须是大于 0 的整数';
+  }
+  if (draft.enabled && !draft.botTokenSet && !draft.botToken?.trim()) {
+    return '启用 Telegram Bot 前请填写 Bot Token';
+  }
+  return {
+    ...draft,
+    botToken: draft.botToken?.trim() ?? '',
+    apiBaseUrl: draft.apiBaseUrl.trim().replace(/\/+$/, '') || 'https://api.telegram.org',
+    pollIntervalSeconds
+  };
+}
+
 export function toAmountOptions(amountStats: Stats['amountStats'], drafts: { amount: string; probability: string }[]) {
   const amounts = new Set<string>();
   amountStats.forEach((item) => {
@@ -283,12 +309,16 @@ export function settingsChanged(
   socialPrizeTierDrafts: { amount: string; probability: string }[],
   groupLink: string,
   groupLinkDraft: string,
+  frontendPublicUrl: string,
+  frontendPublicUrlDraft: string,
   admin: AdminSettings,
   adminDraft: AdminSettings,
   sub2api: Sub2APISettings,
   sub2apiDraft: Sub2APISettings,
   invitation: InvitationSettings,
-  invitationDraft: InvitationSettings
+  invitationDraft: InvitationSettings,
+  telegram: TelegramSettings,
+  telegramDraft: TelegramSettings
 ) {
   if (dailyMaxUsersDraft !== String(dailyMaxUsers)) {
     return true;
@@ -311,6 +341,9 @@ export function settingsChanged(
   if (groupLinkDraft !== groupLink) {
     return true;
   }
+  if (frontendPublicUrlDraft !== frontendPublicUrl) {
+    return true;
+  }
   if (adminDraft.username !== admin.username) {
     return true;
   }
@@ -320,5 +353,11 @@ export function settingsChanged(
   if (invitation.afterTime !== invitationDraft.afterTime || Number(invitation.amount) !== Number(invitationDraft.amount)) {
     return true;
   }
-  return JSON.stringify(toSub2APIDraft(sub2api)) !== JSON.stringify(sub2apiDraft);
+  if (JSON.stringify(toSub2APIDraft(sub2api)) !== JSON.stringify(sub2apiDraft)) {
+    return true;
+  }
+  if ((telegramDraft.botToken ?? '') !== '') {
+    return true;
+  }
+  return JSON.stringify(toTelegramDraft(telegram)) !== JSON.stringify(telegramDraft);
 }

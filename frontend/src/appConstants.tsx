@@ -18,7 +18,8 @@ import {
   Stats,
   Sub2APIGroupRateMonitor,
   Sub2APISettings,
-  InvitationSettings
+  InvitationSettings,
+  TelegramSettings
 } from './api';
 
 export type DashboardSection = 'checkins' | 'invitations' | 'favorites' | 'recharge' | 'rates' | 'system';
@@ -54,6 +55,16 @@ export const emptyGroupRateMonitor: Sub2APIGroupRateMonitor = {
   groups: [],
   series: [],
   logs: []
+};
+
+export const emptyTelegramSettings: TelegramSettings = {
+  enabled: false,
+  botToken: '',
+  botTokenSet: false,
+  apiBaseUrl: 'https://api.telegram.org',
+  pollIntervalSeconds: 2,
+  botUsername: '',
+  connected: false
 };
 
 export const emptyInvitationSettings: InvitationSettings = {

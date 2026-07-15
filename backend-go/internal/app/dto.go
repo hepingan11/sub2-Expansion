@@ -111,9 +111,11 @@ type CheckInSettingsResponse struct {
 	DirectPrizeTiers    []PrizeTier      `json:"directPrizeTiers"`
 	SocialPrizeTiers    []PrizeTier      `json:"socialPrizeTiers"`
 	GroupLink           string           `json:"groupLink"`
+	FrontendPublicURL   string           `json:"frontendPublicUrl"`
 	Admin               AdminConfig      `json:"admin"`
 	Sub2API             Sub2APIConfig    `json:"sub2api"`
 	Invitation          InvitationConfig `json:"invitation"`
+	Telegram            TelegramConfig   `json:"telegram"`
 }
 
 type UpdateCheckInSettingsRequest struct {
@@ -125,9 +127,11 @@ type UpdateCheckInSettingsRequest struct {
 	DirectPrizeTiers    []PrizeTier      `json:"directPrizeTiers"`
 	SocialPrizeTiers    []PrizeTier      `json:"socialPrizeTiers"`
 	GroupLink           string           `json:"groupLink"`
+	FrontendPublicURL   string           `json:"frontendPublicUrl"`
 	Admin               AdminConfig      `json:"admin"`
 	Sub2API             Sub2APIConfig    `json:"sub2api"`
 	Invitation          InvitationConfig `json:"invitation"`
+	Telegram            TelegramConfig   `json:"telegram"`
 }
 
 type InvitationConfig struct {
@@ -150,6 +154,16 @@ type Sub2APIConfig struct {
 	AdminPassword    string `json:"adminPassword,omitempty"`
 	AdminPasswordSet bool   `json:"adminPasswordSet"`
 	TimeoutSeconds   int    `json:"timeoutSeconds"`
+}
+
+type TelegramConfig struct {
+	Enabled             bool   `json:"enabled"`
+	BotToken            string `json:"botToken,omitempty"`
+	BotTokenSet         bool   `json:"botTokenSet"`
+	APIBaseURL          string `json:"apiBaseUrl"`
+	PollIntervalSeconds int    `json:"pollIntervalSeconds"`
+	BotUsername         string `json:"botUsername,omitempty"`
+	Connected           bool   `json:"connected"`
 }
 
 type RechargeActivityRequest struct {

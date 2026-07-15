@@ -28,6 +28,8 @@ const (
 	checkInGroupLinkKey    = "check_in.group_link"
 	invitationAfterTimeKey = "invitation.after_time"
 	invitationAmountKey    = "invitation.amount"
+	frontendPublicURLKey   = "app.frontend_public_url"
+	platformSettingsPrefix = "platform."
 
 	adminUsernameKey     = "admin.username"
 	adminPasswordHashKey = "admin.password_hash"
@@ -42,6 +44,11 @@ const (
 	sub2APITokenExpiresAtKey = "sub2api.jwt_expires_at"
 
 	sub2APIGroupRateMonitorKey = "sub2api.group_rate_monitor"
+
+	telegramEnabledKey             = "telegram.enabled"
+	telegramBotTokenKey            = "telegram.bot_token"
+	telegramBotAPIBaseURLKey       = "telegram.api_base_url"
+	telegramBotPollIntervalSeconds = "telegram.poll_interval_seconds"
 )
 
 const sub2APITokenRefreshBefore = 10 * time.Minute

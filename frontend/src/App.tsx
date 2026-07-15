@@ -31,6 +31,7 @@ import {
   clearUserSession,
   clearToken,
   CodePayload,
+  connectTelegramBot,
   createCode,
   createFavoriteSite,
   createRechargeActivity,
@@ -80,6 +81,7 @@ import {
   Sub2APIGroupRateMonitorSettings,
   Sub2APIGroupRateSeries,
   Sub2APISettings,
+  TelegramSettings,
   Sub2APIUserProfile,
   SystemUpdateCheck,
   updateCheckInSettings,
@@ -106,6 +108,7 @@ import {
   emptyInvitationSettings,
   emptyStats,
   emptySub2APISettings,
+  emptyTelegramSettings,
   favoriteEmojiPresets,
   favoriteIconPresets,
   LoginMode,
@@ -125,6 +128,7 @@ import {
   parsePrizeTierDrafts,
   parseRechargeActivityPayload,
   parseSub2APIDraft,
+  parseTelegramDraft,
   prizeTierTotal,
   RechargeRewardTierDraft,
   sectionTitle,
@@ -134,6 +138,7 @@ import {
   toPrizeTierDrafts,
   toRechargeTierDrafts,
   toSub2APIDraft,
+  toTelegramDraft,
   updatePrizeTierDraft,
   updateSub2APIDraft
 } from './appUtils';
@@ -875,10 +880,15 @@ function Dashboard({
   const [socialPrizeTierDrafts, setSocialPrizeTierDrafts] = useState([{ amount: '1.00', probability: '100.00' }]);
   const [groupLink, setGroupLink] = useState('');
   const [groupLinkDraft, setGroupLinkDraft] = useState('');
+  const [frontendPublicUrl, setFrontendPublicUrl] = useState('');
+  const [frontendPublicUrlDraft, setFrontendPublicUrlDraft] = useState('');
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(emptyAdminSettings);
   const [adminSettingsDraft, setAdminSettingsDraft] = useState<AdminSettings>(emptyAdminSettings);
   const [sub2api, setSub2api] = useState<Sub2APISettings>(emptySub2APISettings);
   const [sub2apiDraft, setSub2apiDraft] = useState<Sub2APISettings>(emptySub2APISettings);
+  const [telegram, setTelegram] = useState<TelegramSettings>(emptyTelegramSettings);
+  const [telegramDraft, setTelegramDraft] = useState<TelegramSettings>(emptyTelegramSettings);
+  const [telegramConnecting, setTelegramConnecting] = useState(false);
   const [invitationSettings, setInvitationSettings] = useState<InvitationSettings>(emptyInvitationSettings);
   const [invitationSettingsDraft, setInvitationSettingsDraft] = useState<InvitationSettings>(emptyInvitationSettings);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -948,11 +958,16 @@ function Dashboard({
     setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
     setGroupLink(settingsData.groupLink ?? '');
     setGroupLinkDraft(settingsData.groupLink ?? '');
+    setFrontendPublicUrl(settingsData.frontendPublicUrl ?? '');
+    setFrontendPublicUrlDraft(settingsData.frontendPublicUrl ?? '');
     const nextAdmin = settingsData.admin ?? emptyAdminSettings;
     setAdminSettings(nextAdmin);
     setAdminSettingsDraft({ ...nextAdmin, password: '' });
     setSub2api(settingsData.sub2api ?? emptySub2APISettings);
     setSub2apiDraft(toSub2APIDraft(settingsData.sub2api ?? emptySub2APISettings));
+    const nextTelegram = settingsData.telegram ?? emptyTelegramSettings;
+    setTelegram(nextTelegram);
+    setTelegramDraft(toTelegramDraft(nextTelegram));
     const nextInvitation = settingsData.invitation ?? emptyInvitationSettings;
     const invitationDraft = {
       ...nextInvitation,
@@ -1183,6 +1198,33 @@ function Dashboard({
     return invitationRecordStatusOptions.find((item) => item.value === value)?.label ?? value;
   }
 
+  const hasSettingsChanges = settingsChanged(
+    dailyMaxUsers,
+    dailyMaxUsersDraft,
+    dailyLimitMode,
+    dailyLimitModeDraft,
+    directDailyMaxUsers,
+    directDailyMaxUsersDraft,
+    socialDailyMaxUsers,
+    socialDailyMaxUsersDraft,
+    prizeTiers,
+    prizeTierDrafts,
+    socialPrizeTiers,
+    socialPrizeTierDrafts,
+    groupLink,
+    groupLinkDraft,
+    frontendPublicUrl,
+    frontendPublicUrlDraft,
+    adminSettings,
+    adminSettingsDraft,
+    sub2api,
+    sub2apiDraft,
+    invitationSettings,
+    invitationSettingsDraft,
+    telegram,
+    telegramDraft
+  );
+
   function logout() {
     clearToken();
     onLogout();
@@ -1261,8 +1303,13 @@ function Dashboard({
         notifyError(parsedSub2API);
         return;
       }
+      const parsedTelegram = parseTelegramDraft(telegramDraft);
+      if (typeof parsedTelegram === 'string') {
+        notifyError(parsedTelegram);
+        return;
+      }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), parsedAdminSettings, parsedSub2API, parsedInvitation);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), parsedAdminSettings, parsedSub2API, parsedInvitation, parsedTelegram);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1282,11 +1329,16 @@ function Dashboard({
       setSocialPrizeTierDrafts(toPrizeTierDrafts(socialTiers));
       setGroupLink(settings.groupLink ?? '');
       setGroupLinkDraft(settings.groupLink ?? '');
+      setFrontendPublicUrl(settings.frontendPublicUrl ?? '');
+      setFrontendPublicUrlDraft(settings.frontendPublicUrl ?? '');
       const savedAdmin = settings.admin ?? emptyAdminSettings;
       setAdminSettings(savedAdmin);
       setAdminSettingsDraft({ ...savedAdmin, password: '' });
       setSub2api(settings.sub2api);
       setSub2apiDraft(toSub2APIDraft(settings.sub2api));
+      const savedTelegram = settings.telegram ?? emptyTelegramSettings;
+      setTelegram(savedTelegram);
+      setTelegramDraft(toTelegramDraft(savedTelegram));
       const savedInvitation = settings.invitation ?? emptyInvitationSettings;
       const savedInvitationDraft = { ...savedInvitation, afterTime: toDateTimeLocal(savedInvitation.afterTime) };
       setInvitationSettings(savedInvitationDraft);
@@ -1296,6 +1348,25 @@ function Dashboard({
       notifyError(err instanceof Error ? err.message : '保存设置失败');
     } finally {
       setSettingsSaving(false);
+    }
+  }
+
+  async function connectTelegram() {
+    if (hasSettingsChanges) {
+      notifyError('请先保存 Telegram 配置，再测试连接');
+      return;
+    }
+    setTelegramConnecting(true);
+    try {
+      const result = await connectTelegramBot();
+      const nextTelegram = { ...telegram, ...result };
+      setTelegram(nextTelegram);
+      setTelegramDraft(toTelegramDraft(nextTelegram));
+      notifySuccess(result.botUsername ? `Telegram 已连接：@${result.botUsername}` : 'Telegram 已连接');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '连接 Telegram 失败');
+    } finally {
+      setTelegramConnecting(false);
     }
   }
 
@@ -1608,7 +1679,7 @@ function Dashboard({
                 </label>
               </>
             )}
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, groupLink, groupLinkDraft, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft, invitationSettings, invitationSettingsDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !hasSettingsChanges}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
@@ -2509,7 +2580,7 @@ function Dashboard({
               <Settings2 size={18} />
               <span>系统设置</span>
             </div>
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !settingsChanged(dailyMaxUsers, dailyMaxUsersDraft, dailyLimitMode, dailyLimitModeDraft, directDailyMaxUsers, directDailyMaxUsersDraft, socialDailyMaxUsers, socialDailyMaxUsersDraft, prizeTiers, prizeTierDrafts, socialPrizeTiers, socialPrizeTierDrafts, groupLink, groupLinkDraft, adminSettings, adminSettingsDraft, sub2api, sub2apiDraft, invitationSettings, invitationSettingsDraft)}>
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || !hasSettingsChanges}>
               <CheckCircle2 size={17} />
               {settingsSaving ? '保存中...' : '保存'}
             </button>
@@ -2568,6 +2639,29 @@ function Dashboard({
             {systemUpdateOutput && (
               <pre className="system-update-output">{systemUpdateOutput}</pre>
             )}
+          </div>
+
+          <div className="sub2api-editor standalone public-url-editor">
+            <div className="tier-editor-head">
+              <div className="settings-title">
+                <ExternalLink size={18} />
+                <span>公开访问地址</span>
+              </div>
+            </div>
+            <label>
+              前端公开地址
+              <input
+                value={frontendPublicUrlDraft}
+                onChange={(event) => {
+                  setFrontendPublicUrlDraft(event.target.value);
+                  setSettingsSaved(false);
+                }}
+                placeholder="https://your-public-frontend"
+              />
+            </label>
+            <div className="system-update-note">
+              <span>Telegram 和其它社交平台绑定链接会使用这个地址。留空时回退到环境变量 FRONTEND_PUBLIC_URL；仍为空时尝试使用当前请求来源。</span>
+            </div>
           </div>
 
           <div className="sub2api-editor standalone invitation-system-panel">
@@ -2641,6 +2735,90 @@ function Dashboard({
                   placeholder={adminSettings.passwordSet ? '已设置，留空则不修改' : '输入新的后台登录密码'}
                 />
               </label>
+            </div>
+          </div>
+
+          <div className="sub2api-editor standalone telegram-editor">
+            <div className="tier-editor-head">
+              <div className="settings-title">
+                <Globe2 size={18} />
+                <span>Telegram Bot</span>
+              </div>
+              <div className="system-update-actions">
+                <span className={`invitation-status ${telegramDraft.enabled && telegram.botTokenSet ? 'is-active' : ''}`}>
+                  {telegramDraft.enabled && telegram.botTokenSet ? (telegram.botUsername ? `@${telegram.botUsername}` : '已配置') : '未启用'}
+                </span>
+                <button
+                  className="ghost-btn"
+                  type="button"
+                  onClick={connectTelegram}
+                  disabled={telegramConnecting || settingsSaving || !telegramDraft.enabled}
+                >
+                  <CheckCircle2 size={17} />
+                  {telegramConnecting ? '连接中...' : '连接测试'}
+                </button>
+              </div>
+            </div>
+            <div className="telegram-control-line">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={telegramDraft.enabled}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, enabled: event.target.checked }));
+                    setSettingsSaved(false);
+                  }}
+                />
+                启用 Telegram Bot 长轮询
+              </label>
+              <span>{telegram.botTokenSet ? 'Bot Token 已保存，留空不会修改。' : '尚未保存 Bot Token。'}</span>
+            </div>
+            <div className="sub2api-grid">
+              <label>
+                Bot Token
+                <input
+                  type="password"
+                  value={telegramDraft.botToken ?? ''}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, botToken: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder={telegram.botTokenSet ? '已设置，留空则不修改' : '从 BotFather 获取的 Token'}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Telegram API 地址
+                <input
+                  value={telegramDraft.apiBaseUrl}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, apiBaseUrl: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder="https://api.telegram.org"
+                />
+              </label>
+              <label>
+                轮询间隔秒数
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={telegramDraft.pollIntervalSeconds}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, pollIntervalSeconds: Number(event.target.value) }));
+                    setSettingsSaved(false);
+                  }}
+                />
+              </label>
+              <label>
+                Bot Username
+                <input value={telegram.botUsername ? `@${telegram.botUsername}` : ''} readOnly placeholder="连接测试后显示" />
+              </label>
+            </div>
+            <div className="system-update-note">
+              <span>保存配置后点击连接测试，后端会调用 Telegram getMe 并立即启动或重启 Bot 轮询。</span>
+              <span>用户在 Telegram 发送 /bind 后会收到前端绑定链接；绑定后可使用 /checkin、/invite、/me。</span>
             </div>
           </div>
 

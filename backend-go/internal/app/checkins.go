@@ -83,7 +83,10 @@ func (app *App) respondSocialCheckIn(c *gin.Context, req CheckInRequest) {
 }
 
 func (app *App) socialBindingURL(c *gin.Context, platform, externalUserID, inviteCode string) string {
-	baseURL := strings.TrimRight(strings.TrimSpace(app.cfg.FrontendPublicURL), "/")
+	baseURL, err := app.frontendPublicURL()
+	if err != nil {
+		baseURL = ""
+	}
 	if baseURL == "" {
 		baseURL = requestPublicOrigin(c)
 	}
@@ -247,10 +250,10 @@ func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInRes
 func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate, autoRedeemUserID *int64, checkInMethod, platformType string) (CheckInResponse, error) {
 	var response CheckInResponse
 	err := app.db.Transaction(func(tx *gorm.DB) error {
-		if err := app.consumeDailyQuota(tx, today, checkInMethod); err != nil {
+		if err := app.consumeDailyQuota(tx, today, checkInMethod, platformType); err != nil {
 			return err
 		}
-		drawnAmount, err := app.drawAmount(checkInMethod)
+		drawnAmount, err := app.drawAmount(checkInMethod, platformType)
 		if err != nil {
 			return err
 		}
@@ -312,7 +315,16 @@ func (app *App) attachPublicCheckInSettings(response *CheckInResponse) error {
 	if err != nil {
 		return err
 	}
-	response.GroupLink = app.checkInGroupLink()
+	groupLink := app.checkInGroupLink()
+	if response.CheckInMethod == checkInMethodSocial && strings.TrimSpace(response.PlatformType) != "" {
+		if platformConfig, _, err := app.platformCheckInConfig(response.PlatformType); err != nil {
+			return err
+		} else {
+			groupLink = platformConfig.GroupLink
+			socialTiers = platformConfig.PrizeTiers
+		}
+	}
+	response.GroupLink = groupLink
 	response.SocialPrizeTiers = socialTiers
 	return nil
 }
@@ -325,13 +337,13 @@ func (app *App) checkInGroupLink() string {
 	return strings.TrimSpace(value)
 }
 
-func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod string) error {
+func (app *App) consumeDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod, platformType string) error {
 	mode, err := app.getDailyLimitMode()
 	if err != nil {
 		return err
 	}
 	if mode == "separate" {
-		return app.consumeMethodDailyQuota(tx, today, checkInMethod)
+		return app.consumeMethodDailyQuota(tx, today, checkInMethod, platformType)
 	}
 	return app.consumeSharedDailyQuota(tx, today)
 }
@@ -363,32 +375,41 @@ func (app *App) consumeSharedDailyQuota(tx *gorm.DB, today LocalDate) error {
 	}).Error
 }
 
-func (app *App) consumeMethodDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod string) error {
+func (app *App) consumeMethodDailyQuota(tx *gorm.DB, today LocalDate, checkInMethod, platformType string) error {
 	if checkInMethod == "" {
 		checkInMethod = checkInMethodDirect
 	}
+	limitKey := checkInMethod
 	dailyMaxUsers, err := app.dailyMaxUsersForMethod(checkInMethod)
 	if err != nil {
 		return err
+	}
+	countQuery := tx.Model(&CheckInRecord{}).Where("sign_date = ? AND check_in_method = ?", today, checkInMethod)
+	if checkInMethod == checkInMethodSocial && strings.TrimSpace(platformType) != "" {
+		if platformConfig, effective, err := app.platformCheckInConfig(platformType); err != nil {
+			return err
+		} else if effective {
+			dailyMaxUsers = platformConfig.DailyMaxUsers
+			limitKey = platformMethodKey(platformType)
+			countQuery = countQuery.Where("platform_type = ?", platformType)
+		}
 	}
 	if dailyMaxUsers <= 0 {
 		return businessConflict("daily check-in quota is full")
 	}
 
 	var existingCount int64
-	if err := tx.Model(&CheckInRecord{}).
-		Where("sign_date = ? AND check_in_method = ?", today, checkInMethod).
-		Count(&existingCount).Error; err != nil {
+	if err := countQuery.Count(&existingCount).Error; err != nil {
 		return err
 	}
 
-	limit := DailyCheckInMethodLimit{SignDate: today, CheckInMethod: checkInMethod, CheckedCount: int(existingCount)}
+	limit := DailyCheckInMethodLimit{SignDate: today, CheckInMethod: limitKey, CheckedCount: int(existingCount)}
 	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&limit).Error; err != nil {
 		return err
 	}
 
 	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("sign_date = ? AND check_in_method = ?", today, checkInMethod).
+		Where("sign_date = ? AND check_in_method = ?", today, limitKey).
 		First(&limit).Error
 	if err != nil {
 		return err
@@ -397,7 +418,7 @@ func (app *App) consumeMethodDailyQuota(tx *gorm.DB, today LocalDate, checkInMet
 		return businessConflict("daily check-in quota is full")
 	}
 	return tx.Model(&DailyCheckInMethodLimit{}).
-		Where("sign_date = ? AND check_in_method = ?", today, checkInMethod).
+		Where("sign_date = ? AND check_in_method = ?", today, limitKey).
 		Updates(map[string]any{
 			"checked_count": gorm.Expr("checked_count + 1"),
 			"updated_at":    time.Now(),

@@ -95,9 +95,11 @@ export interface CheckInSettings {
   directPrizeTiers: PrizeTierSetting[];
   socialPrizeTiers: PrizeTierSetting[];
   groupLink: string;
+  frontendPublicUrl: string;
   admin: AdminSettings;
   sub2api: Sub2APISettings;
   invitation: InvitationSettings;
+  telegram: TelegramSettings;
 }
 
 export interface InvitationSettings {
@@ -145,6 +147,16 @@ export interface Sub2APISettings {
   adminPassword?: string;
   adminPasswordSet: boolean;
   timeoutSeconds: number;
+}
+
+export interface TelegramSettings {
+  enabled: boolean;
+  botToken?: string;
+  botTokenSet: boolean;
+  apiBaseUrl: string;
+  pollIntervalSeconds: number;
+  botUsername?: string;
+  connected: boolean;
 }
 
 export interface AdminSettings {
@@ -535,13 +547,21 @@ export async function updateCheckInSettings(
   directPrizeTiers: PrizeTierSetting[],
   socialPrizeTiers: PrizeTierSetting[],
   groupLink: string,
+  frontendPublicUrl: string,
   admin: AdminSettings,
   sub2api: Sub2APISettings,
-  invitation: InvitationSettings
+  invitation: InvitationSettings,
+  telegram: TelegramSettings
 ) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, admin, sub2api, invitation })
+    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, admin, sub2api, invitation, telegram })
+  });
+}
+
+export async function connectTelegramBot() {
+  return request<TelegramSettings>('/api/admin/telegram/connect', {
+    method: 'POST'
   });
 }
 

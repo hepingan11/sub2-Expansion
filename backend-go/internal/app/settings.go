@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -91,6 +92,10 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if err := app.saveSetting(frontendPublicURLKey, normalizeFrontendPublicURL(req.FrontendPublicURL)); err != nil {
+		serverError(c, err)
+		return
+	}
 	if err := app.saveSetting(invitationAfterTimeKey, invitation.AfterTime); err != nil {
 		serverError(c, err)
 		return
@@ -120,6 +125,11 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if err := app.saveTelegramConfig(req.Telegram); err != nil {
+		serverError(c, err)
+		return
+	}
+	app.restartTelegramBot(context.Background())
 	settings, err := app.loadCheckInSettings()
 	if err != nil {
 		serverError(c, err)
@@ -157,6 +167,10 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
+	frontendPublicURL, err := app.frontendPublicURL()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	invitation, err := app.loadInvitationConfig()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
@@ -175,6 +189,10 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	sub2api.AdminPassword = ""
 	admin.PasswordSet = admin.Password != ""
 	admin.Password = ""
+	telegram, err := app.safeTelegramConfigForAdmin()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	return CheckInSettingsResponse{
 		DailyMaxUsers:       dailyMaxUsers,
 		DailyLimitMode:      dailyLimitMode,
@@ -184,9 +202,11 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		DirectPrizeTiers:    directTiers,
 		SocialPrizeTiers:    socialTiers,
 		GroupLink:           groupLink,
+		FrontendPublicURL:   frontendPublicURL,
 		Admin:               admin,
 		Sub2API:             sub2api,
 		Invitation:          invitation,
+		Telegram:            telegram,
 	}, nil
 }
 
@@ -346,6 +366,92 @@ func (app *App) saveSub2APIConfig(cfg Sub2APIConfig) error {
 	return nil
 }
 
+func (app *App) effectiveTelegramConfig() (TelegramConfig, error) {
+	pollInterval := int(app.cfg.TelegramBotPollEvery / time.Second)
+	if pollInterval <= 0 {
+		pollInterval = 2
+	}
+	cfg := TelegramConfig{
+		Enabled:             app.cfg.TelegramBotEnabled,
+		BotToken:            strings.TrimSpace(app.cfg.TelegramBotToken),
+		BotTokenSet:         strings.TrimSpace(app.cfg.TelegramBotToken) != "",
+		APIBaseURL:          strings.TrimRight(strings.TrimSpace(app.cfg.TelegramBotAPIBaseURL), "/"),
+		PollIntervalSeconds: pollInterval,
+	}
+	var err error
+	if enabled, found, err := app.getSetting(telegramEnabledKey); err != nil {
+		return TelegramConfig{}, err
+	} else if found {
+		cfg.Enabled = parseBoolSetting(enabled, cfg.Enabled)
+	}
+	if cfg.BotToken, err = app.settingOrDefault(telegramBotTokenKey, cfg.BotToken); err != nil {
+		return TelegramConfig{}, err
+	}
+	if cfg.APIBaseURL, err = app.settingOrDefault(telegramBotAPIBaseURLKey, cfg.APIBaseURL); err != nil {
+		return TelegramConfig{}, err
+	}
+	if interval, found, err := app.getSetting(telegramBotPollIntervalSeconds); err != nil {
+		return TelegramConfig{}, err
+	} else if found {
+		if parsed, parseErr := strconv.Atoi(strings.TrimSpace(interval)); parseErr == nil && parsed > 0 {
+			cfg.PollIntervalSeconds = parsed
+		}
+	}
+	cfg.BotToken = strings.TrimSpace(cfg.BotToken)
+	cfg.BotTokenSet = cfg.BotToken != ""
+	cfg.APIBaseURL = strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/")
+	if cfg.APIBaseURL == "" {
+		cfg.APIBaseURL = "https://api.telegram.org"
+	}
+	if cfg.PollIntervalSeconds <= 0 {
+		cfg.PollIntervalSeconds = 2
+	}
+	cfg.Connected = cfg.Enabled && cfg.BotTokenSet
+	return cfg, nil
+}
+
+func (app *App) safeTelegramConfigForAdmin() (TelegramConfig, error) {
+	cfg, err := app.effectiveTelegramConfig()
+	if err != nil {
+		return TelegramConfig{}, err
+	}
+	cfg.BotToken = ""
+	return cfg, nil
+}
+
+func (app *App) saveTelegramConfig(cfg TelegramConfig) error {
+	values := map[string]string{
+		telegramEnabledKey:             strconv.FormatBool(cfg.Enabled),
+		telegramBotAPIBaseURLKey:       strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/"),
+		telegramBotPollIntervalSeconds: strconv.Itoa(max(cfg.PollIntervalSeconds, 1)),
+	}
+	if values[telegramBotAPIBaseURLKey] == "" {
+		values[telegramBotAPIBaseURLKey] = "https://api.telegram.org"
+	}
+	for key, value := range values {
+		if err := app.saveSetting(key, value); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(cfg.BotToken) != "" {
+		if err := app.saveSetting(telegramBotTokenKey, strings.TrimSpace(cfg.BotToken)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseBoolSetting(value string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
 func defaultSub2APIAuthMode(cfg Config) string {
 	if cfg.Sub2APIAdminAPIKey != "" {
 		return "admin_api_key"
@@ -371,6 +477,14 @@ func (app *App) settingOrDefault(key, fallback string) (string, error) {
 		return fallback, nil
 	}
 	return value, nil
+}
+
+func (app *App) frontendPublicURL() (string, error) {
+	return app.settingOrDefault(frontendPublicURLKey, normalizeFrontendPublicURL(app.cfg.FrontendPublicURL))
+}
+
+func normalizeFrontendPublicURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
 func (app *App) getDailyMaxUsers() (int, error) {
@@ -438,21 +552,24 @@ func (app *App) getPrizeTiers(key string, fallback []PrizeTier) ([]PrizeTier, er
 	if !found {
 		return fallback, app.savePrizeTiers(key, fallback)
 	}
-	var tiers []PrizeTier
-	if err := json.Unmarshal([]byte(value), &tiers); err != nil {
-		return fallback, app.savePrizeTiers(key, fallback)
-	}
-	normalized, err := normalizePrizeTiers(tiers)
+	normalized, err := parsePrizeTiers(value)
 	if err != nil {
 		return fallback, app.savePrizeTiers(key, fallback)
 	}
 	return normalized, nil
 }
 
-func (app *App) drawAmount(checkInMethod string) (Amount, error) {
+func (app *App) drawAmount(checkInMethod, platformType string) (Amount, error) {
 	key := prizeTiersKey
 	fallback := defaultPrizeTiers
 	if checkInMethod == checkInMethodSocial {
+		if strings.TrimSpace(platformType) != "" {
+			platformConfig, _, err := app.platformCheckInConfig(platformType)
+			if err != nil {
+				return Amount{}, err
+			}
+			return drawAmountFromTiers(platformConfig.PrizeTiers)
+		}
 		key = socialPrizeTiersKey
 		if directTiers, err := app.getPrizeTiers(prizeTiersKey, defaultPrizeTiers); err == nil {
 			fallback = directTiers
@@ -462,6 +579,10 @@ func (app *App) drawAmount(checkInMethod string) (Amount, error) {
 	if err != nil {
 		return Amount{}, err
 	}
+	return drawAmountFromTiers(tiers)
+}
+
+func drawAmountFromTiers(tiers []PrizeTier) (Amount, error) {
 	roll, err := secureInt(10000)
 	if err != nil {
 		roll = mathrand.Intn(10000) + 1

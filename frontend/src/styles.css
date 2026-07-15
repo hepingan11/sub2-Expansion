@@ -1706,6 +1706,26 @@ textarea {
   gap: 10px;
 }
 
+.telegram-editor {
+  gap: 12px;
+}
+
+.telegram-control-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.telegram-control-line span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .system-update-panel {
   gap: 12px;
 }

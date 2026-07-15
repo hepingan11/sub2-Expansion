@@ -257,7 +257,7 @@ func (app *App) bindInvitation(ctx context.Context, invitee sub2APIUserSnapshot,
 	if err != nil {
 		return InvitationBindingResult{}, businessConflict(err.Error())
 	}
-	config, err := app.loadInvitationConfig()
+	config, err := app.invitationConfigForPlatform(platform)
 	if err != nil {
 		return InvitationBindingResult{}, err
 	}
