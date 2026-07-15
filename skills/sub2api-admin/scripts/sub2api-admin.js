@@ -205,7 +205,8 @@ async function publicRequest(method, pathname, body) {
     data = { raw: text };
   }
   const socialBindingRequired = res.status === 404 && data && data.code === "SOCIAL_ACCOUNT_NOT_BOUND";
-  if ((!res.ok && !socialBindingRequired) || (data && data.code !== undefined && data.code !== 0 && data.code !== "0" && data.code !== "SOCIAL_ACCOUNT_NOT_BOUND")) {
+  const publicBusinessFailed = res.ok && data && data.success === false;
+  if ((!res.ok && !socialBindingRequired) || publicBusinessFailed) {
     const detail = data.message || data.code || res.statusText;
     throw new Error(`${method} ${pathname} failed: ${detail}`);
   }

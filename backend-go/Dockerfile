@@ -9,10 +9,13 @@ ARG APP_VERSION=dev
 RUN apk add --no-cache ca-certificates docker-cli docker-cli-compose git tzdata
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/redeem-code-system-go .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/redeem-code-system-go .
 
 FROM alpine:3.22
 
