@@ -21,7 +21,7 @@ FROM alpine:3.22
 
 ARG APP_VERSION=v0.2
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates docker-cli docker-cli-compose git tzdata
 
 WORKDIR /app
 

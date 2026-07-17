@@ -55,7 +55,7 @@ func (app *App) getSystemUpdateCheck(c *gin.Context) {
 func (app *App) runSystemUpdate(c *gin.Context) {
 	command := strings.TrimSpace(app.cfg.SystemUpdateCommand)
 	if command == "" {
-		conflict(c, "SYSTEM_UPDATE_COMMAND is not configured")
+		conflict(c, "后台更新未启用；Docker 部署请检查 SYSTEM_UPDATE_ENABLED 和内置更新脚本")
 		return
 	}
 
@@ -89,7 +89,7 @@ func (app *App) runSystemUpdate(c *gin.Context) {
 	c.JSON(http.StatusOK, SystemUpdateRunResponse{
 		Started: true,
 		Output:  limitedOutput,
-		Message: "update command completed",
+		Message: "更新任务已启动，请稍后刷新页面查看版本",
 	})
 }
 

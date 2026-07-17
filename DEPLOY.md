@@ -64,11 +64,11 @@ openssl rand -hex 32
 
 后台“系统设置”会通过 GitHub Releases 检测 `hepingan11/sub2-Expansion` 的 latest release。检测到新版本后：
 
-- 一键安装脚本会默认写入 `SYSTEM_UPDATE_COMMAND`，后台可以点击“立即更新”。
+- Docker 部署会自动使用 `scripts/update.sh`，无需手工填写 `SYSTEM_UPDATE_COMMAND`，后台可以直接点击“立即更新”。
 - 更新命令会切换到 latest release tag，更新 `.env` 里的 `APP_VERSION`，再执行 `docker compose up -d --build`。
 - 为了让后台容器执行 compose 更新，`backend` 服务会挂载项目目录和 `/var/run/docker.sock`。这等同于授予后台管理员主机 Docker 管理权限，只建议在可信管理员环境使用。
 
-如果不想允许后台执行更新，把 `.env` 里的 `SYSTEM_UPDATE_COMMAND` 留空即可。之后可以在服务器手动更新：
+如果不想允许后台执行更新，将 `.env` 里的 `SYSTEM_UPDATE_ENABLED` 设为 `false`。之后可以在服务器手动更新：
 
 ```bash
 git fetch --tags origin

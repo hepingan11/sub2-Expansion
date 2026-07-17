@@ -1105,7 +1105,7 @@ function Dashboard({
 
   async function updateSystemVersion() {
     if (!systemUpdate?.updateEnabled) {
-      notifyError('未配置 SYSTEM_UPDATE_COMMAND，无法在后台直接执行更新');
+      notifyError('当前部署未启用后台更新，请检查 SYSTEM_UPDATE_ENABLED 和内置更新脚本');
       return;
     }
     if (!await confirmDialog({
@@ -1121,7 +1121,6 @@ function Dashboard({
       const result = await runSystemUpdate();
       setSystemUpdateOutput(result.output || result.message);
       notifySuccess(result.message || '更新命令已执行');
-      await checkSystemUpdate(false);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '执行更新失败');
     } finally {
@@ -2606,7 +2605,7 @@ function Dashboard({
                   type="button"
                   onClick={updateSystemVersion}
                   disabled={systemUpdating || !systemUpdate?.updateAvailable || !systemUpdate?.updateEnabled}
-                  title={systemUpdate?.updateEnabled ? '' : '需要配置 SYSTEM_UPDATE_COMMAND 后才能后台更新'}
+                  title={systemUpdate?.updateEnabled ? '' : '当前部署未启用后台更新'}
                 >
                   {systemUpdating ? '更新中...' : '立即更新'}
                 </button>
@@ -2633,7 +2632,7 @@ function Dashboard({
             <div className="system-update-note">
               <span>Release 标准：{systemUpdate?.repository || 'hepingan11/sub2-Expansion'} 的 latest release。</span>
               {!systemUpdate?.updateEnabled && (
-                <span>未配置后台更新命令时，请在服务器执行：git pull && docker compose up -d --build</span>
+                <span>Docker 部署默认自动启用；未启用时请检查 SYSTEM_UPDATE_ENABLED、项目目录挂载和 Docker Socket。</span>
               )}
             </div>
             {systemUpdateOutput && (

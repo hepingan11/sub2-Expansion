@@ -33,12 +33,26 @@ func loadConfig() Config {
 		Sub2APIRefreshEvery:   time.Duration(envInt("SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS", 300)) * time.Second,
 		AppVersion:            env("APP_VERSION", "v0.2"),
 		GitHubRepository:      env("GITHUB_REPOSITORY", "hepingan11/sub2-Expansion"),
-		SystemUpdateCommand:   env("SYSTEM_UPDATE_COMMAND", ""),
+		SystemUpdateCommand:   loadSystemUpdateCommand(),
 		TelegramBotEnabled:    envBool("TELEGRAM_BOT_ENABLED", false),
 		TelegramBotToken:      env("TELEGRAM_BOT_TOKEN", ""),
 		TelegramBotAPIBaseURL: strings.TrimRight(env("TELEGRAM_BOT_API_BASE_URL", "https://api.telegram.org"), "/"),
 		TelegramBotPollEvery:  time.Duration(envInt("TELEGRAM_BOT_POLL_INTERVAL_SECONDS", 2)) * time.Second,
 	}
+}
+
+func loadSystemUpdateCommand() string {
+	if !envBool("SYSTEM_UPDATE_ENABLED", true) {
+		return ""
+	}
+	if command := strings.TrimSpace(os.Getenv("SYSTEM_UPDATE_COMMAND")); command != "" {
+		return command
+	}
+	const scriptPath = "/opt/sub2-Expansion/scripts/update.sh"
+	if info, err := os.Stat(scriptPath); err == nil && !info.IsDir() {
+		return `sh /opt/sub2-Expansion/scripts/update.sh "$LATEST_VERSION"`
+	}
+	return ""
 }
 
 func loadDotEnv() {

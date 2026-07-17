@@ -3,7 +3,6 @@ set -eu
 
 REPO_URL="${REPO_URL:-https://github.com/hepingan11/sub2-Expansion.git}"
 BRANCH="${BRANCH:-main}"
-DEFAULT_UPDATE_COMMAND='git config --global --add safe.directory /opt/sub2-Expansion && cd /opt/sub2-Expansion && git fetch --tags origin && git checkout "$LATEST_VERSION" && if grep -q "^APP_VERSION=" .env; then sed -i "s#^APP_VERSION=.*#APP_VERSION=$LATEST_VERSION#" .env; else printf "\nAPP_VERSION=%s\n" "$LATEST_VERSION" >> .env; fi && nohup sh -c "docker compose --project-directory /opt/sub2-Expansion -f /opt/sub2-Expansion/docker-compose.yml up -d --build" >/tmp/sub2-expansion-update.log 2>&1 &'
 
 if [ -n "${INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$INSTALL_DIR"
@@ -155,7 +154,8 @@ if [ ! -f .env ]; then
   SUB2API_TOKEN_REFRESH_ENABLED="$(prompt_config 'Enable Sub2API token refresh' "${SUB2API_TOKEN_REFRESH_ENABLED:-true}" required)"
   SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS="$(prompt_config 'Sub2API token refresh interval in seconds' "${SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS:-300}" required)"
   GITHUB_REPOSITORY="$(prompt_config 'GitHub repository for update checks' "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}" required)"
-  SYSTEM_UPDATE_COMMAND="$(prompt_config 'System update command (leave empty to disable)' "${SYSTEM_UPDATE_COMMAND:-$DEFAULT_UPDATE_COMMAND}" optional-hidden-default)"
+  SYSTEM_UPDATE_ENABLED="$(prompt_config 'Enable admin system updates' "${SYSTEM_UPDATE_ENABLED:-true}" required)"
+  SYSTEM_UPDATE_COMMAND="${SYSTEM_UPDATE_COMMAND:-}"
   APP_VERSION="${APP_VERSION:-$(git describe --tags --exact-match 2>/dev/null || printf '%s' v0.2)}"
 
   cat > .env <<EOF
@@ -173,6 +173,7 @@ AUTH_SECRET=${AUTH_SECRET}
 AUTH_TOKEN_TTL_HOURS=${AUTH_TOKEN_TTL_HOURS}
 APP_VERSION=${APP_VERSION}
 GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+SYSTEM_UPDATE_ENABLED=${SYSTEM_UPDATE_ENABLED}
 SYSTEM_UPDATE_COMMAND=${SYSTEM_UPDATE_COMMAND}
 
 VITE_API_BASE=${VITE_API_BASE}
@@ -197,7 +198,8 @@ else
   ensure_env_line PROJECT_DIR "$PROJECT_DIR"
   ensure_env_line APP_VERSION "$(git describe --tags --exact-match 2>/dev/null || printf '%s' v0.2)"
   ensure_env_line GITHUB_REPOSITORY "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}"
-  ensure_env_line SYSTEM_UPDATE_COMMAND "${SYSTEM_UPDATE_COMMAND:-$DEFAULT_UPDATE_COMMAND}"
+  ensure_env_line SYSTEM_UPDATE_ENABLED "${SYSTEM_UPDATE_ENABLED:-true}"
+  ensure_env_line SYSTEM_UPDATE_COMMAND "${SYSTEM_UPDATE_COMMAND:-}"
   ensure_env_line FRONTEND_PUBLIC_URL "${FRONTEND_PUBLIC_URL:-}"
 fi
 

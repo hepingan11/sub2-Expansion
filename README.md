@@ -86,7 +86,7 @@ REPO_URL="https://github.com/hepingan11/sub2-Expansion.git" BRANCH="main" HTTP_P
 
 首次安装完成后，编辑 `<安装目录>/.env`，设置 `SUB2API_BASE_URL` 及相应的 Sub2API 管理认证信息；修改后执行 `docker compose up -d --build` 使配置生效。
 
-脚本默认开启后台“一键更新”能力。该能力需要项目目录和 Docker Socket 挂载到后端容器，适合仅有可信管理员访问的环境。不需要时，在 `.env` 中将 `SYSTEM_UPDATE_COMMAND` 设为空后重新部署。
+Docker 部署默认自动启用后台“一键更新”，无需手工填写 `SYSTEM_UPDATE_COMMAND`。更新由独立临时容器执行，日志写入 `logs/system-update.log`。该能力需要项目目录和 Docker Socket 挂载到后端容器，适合仅有可信管理员访问的环境；不需要时，将 `.env` 中的 `SYSTEM_UPDATE_ENABLED` 设为 `false` 后重新部署。
 
 ### 手动安装
 
@@ -176,7 +176,8 @@ npm run build
 | `SUB2API_ADMIN_API_KEY` | Sub2API 管理 API Key，推荐优先使用 |
 | `SUB2API_ADMIN_EMAIL` / `SUB2API_ADMIN_PASSWORD` | 未配置 API Key 时的 Sub2API 管理员登录凭据 |
 | `CHECK_IN_DAILY_MAX_USERS` | 默认每日签到人数上限 |
-| `SYSTEM_UPDATE_COMMAND` | 可选。后台触发系统更新时在容器内执行的命令 |
+| `SYSTEM_UPDATE_ENABLED` | Docker 部署是否启用后台更新，默认 `true` |
+| `SYSTEM_UPDATE_COMMAND` | 可选高级覆盖项；留空时自动使用 `scripts/update.sh` |
 
 Sub2API 连接配置可在管理端“系统设置”中覆盖。使用账号密码认证时，后端会缓存和刷新 Sub2API access token。
 
@@ -189,7 +190,7 @@ Telegram Bot、目标群 Chat ID、加群链接、入群校验开关和绑定凭
 - 生产环境将 `CORS_ALLOWED_ORIGINS` 设置为实际前端域名，避免使用宽泛来源。
 - `FRONTEND_PUBLIC_URL` 必须是用户可访问的 HTTPS 公网地址，否则社交绑定链接无法正确返回。
 - 只有后端可决定签到概率、邀请资格、奖励金额、累计充值门槛和实际入账操作；前端参数不构成信任边界。
-- 配置 `SYSTEM_UPDATE_COMMAND` 或挂载 Docker Socket 前，确认宿主机权限边界；该能力可执行容器内更新命令。
+- 启用后台更新或挂载 Docker Socket 前，确认宿主机权限边界；该能力可以拉取代码并重建容器。
 
 ## 验证
 
