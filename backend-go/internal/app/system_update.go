@@ -196,7 +196,7 @@ func normalizeVersionTag(value string) string {
 	return strings.TrimPrefix(value, "v")
 }
 
-var versionPattern = regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)\.([0-9]+)`)
+var versionPattern = regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)(?:\.([0-9]+))?`)
 
 func semverParts(value string) ([3]int, bool) {
 	matches := versionPattern.FindStringSubmatch(strings.TrimSpace(value))
@@ -205,6 +205,9 @@ func semverParts(value string) ([3]int, bool) {
 	}
 	var parts [3]int
 	for index := 0; index < 3; index++ {
+		if matches[index+1] == "" {
+			continue
+		}
 		parsed, err := strconv.Atoi(matches[index+1])
 		if err != nil {
 			return [3]int{}, false

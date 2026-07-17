@@ -31,7 +31,7 @@ func loadConfig() Config {
 		Sub2APITimeout:        time.Duration(envInt("SUB2API_TIMEOUT_SECONDS", 15)) * time.Second,
 		Sub2APIRefreshToken:   envBool("SUB2API_TOKEN_REFRESH_ENABLED", true),
 		Sub2APIRefreshEvery:   time.Duration(envInt("SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS", 300)) * time.Second,
-		AppVersion:            env("APP_VERSION", "dev"),
+		AppVersion:            env("APP_VERSION", "v0.2"),
 		GitHubRepository:      env("GITHUB_REPOSITORY", "hepingan11/sub2-Expansion"),
 		SystemUpdateCommand:   env("SYSTEM_UPDATE_COMMAND", ""),
 		TelegramBotEnabled:    envBool("TELEGRAM_BOT_ENABLED", false),

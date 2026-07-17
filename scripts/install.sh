@@ -156,7 +156,7 @@ if [ ! -f .env ]; then
   SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS="$(prompt_config 'Sub2API token refresh interval in seconds' "${SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS:-300}" required)"
   GITHUB_REPOSITORY="$(prompt_config 'GitHub repository for update checks' "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}" required)"
   SYSTEM_UPDATE_COMMAND="$(prompt_config 'System update command (leave empty to disable)' "${SYSTEM_UPDATE_COMMAND:-$DEFAULT_UPDATE_COMMAND}" optional-hidden-default)"
-  APP_VERSION="${APP_VERSION:-$(git describe --tags --always 2>/dev/null || printf '%s' dev)}"
+  APP_VERSION="${APP_VERSION:-$(git describe --tags --exact-match 2>/dev/null || printf '%s' v0.2)}"
 
   cat > .env <<EOF
 HTTP_PORT=${HTTP_PORT}
@@ -195,7 +195,7 @@ else
   CREATED_ENV=false
   echo ".env already exists, keeping current configuration."
   ensure_env_line PROJECT_DIR "$PROJECT_DIR"
-  ensure_env_line APP_VERSION "$(git describe --tags --always 2>/dev/null || printf '%s' dev)"
+  ensure_env_line APP_VERSION "$(git describe --tags --exact-match 2>/dev/null || printf '%s' v0.2)"
   ensure_env_line GITHUB_REPOSITORY "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}"
   ensure_env_line SYSTEM_UPDATE_COMMAND "${SYSTEM_UPDATE_COMMAND:-$DEFAULT_UPDATE_COMMAND}"
   ensure_env_line FRONTEND_PUBLIC_URL "${FRONTEND_PUBLIC_URL:-}"

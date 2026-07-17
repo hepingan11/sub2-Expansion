@@ -4,7 +4,7 @@ FROM golang:1.25-alpine AS build
 
 WORKDIR /src
 
-ARG APP_VERSION=dev
+ARG APP_VERSION=v0.2
 
 RUN apk add --no-cache ca-certificates docker-cli docker-cli-compose git tzdata
 
@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM alpine:3.22
 
-ARG APP_VERSION=dev
+ARG APP_VERSION=v0.2
 
 RUN apk add --no-cache ca-certificates tzdata
 
