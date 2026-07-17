@@ -103,40 +103,47 @@ type PrizeTier struct {
 }
 
 type CheckInSettingsResponse struct {
-	DailyMaxUsers       int              `json:"dailyMaxUsers"`
-	DailyLimitMode      string           `json:"dailyLimitMode"`
-	DirectDailyMaxUsers int              `json:"directDailyMaxUsers"`
-	SocialDailyMaxUsers int              `json:"socialDailyMaxUsers"`
-	PrizeTiers          []PrizeTier      `json:"prizeTiers"`
-	DirectPrizeTiers    []PrizeTier      `json:"directPrizeTiers"`
-	SocialPrizeTiers    []PrizeTier      `json:"socialPrizeTiers"`
-	GroupLink           string           `json:"groupLink"`
-	FrontendPublicURL   string           `json:"frontendPublicUrl"`
-	Admin               AdminConfig      `json:"admin"`
-	Sub2API             Sub2APIConfig    `json:"sub2api"`
-	Invitation          InvitationConfig `json:"invitation"`
-	Telegram            TelegramConfig   `json:"telegram"`
+	DailyMaxUsers       int                   `json:"dailyMaxUsers"`
+	DailyLimitMode      string                `json:"dailyLimitMode"`
+	DirectDailyMaxUsers int                   `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers int                   `json:"socialDailyMaxUsers"`
+	PrizeTiers          []PrizeTier           `json:"prizeTiers"`
+	DirectPrizeTiers    []PrizeTier           `json:"directPrizeTiers"`
+	SocialPrizeTiers    []PrizeTier           `json:"socialPrizeTiers"`
+	GroupLink           string                `json:"groupLink"`
+	FrontendPublicURL   string                `json:"frontendPublicUrl"`
+	Admin               AdminConfig           `json:"admin"`
+	Sub2API             Sub2APIConfig         `json:"sub2api"`
+	Invitation          InvitationConfig      `json:"invitation"`
+	InvitationGuide     InvitationGuideConfig `json:"invitationGuide"`
+	Telegram            TelegramConfig        `json:"telegram"`
 }
 
 type UpdateCheckInSettingsRequest struct {
-	DailyMaxUsers       int              `json:"dailyMaxUsers"`
-	DailyLimitMode      string           `json:"dailyLimitMode"`
-	DirectDailyMaxUsers int              `json:"directDailyMaxUsers"`
-	SocialDailyMaxUsers int              `json:"socialDailyMaxUsers"`
-	PrizeTiers          []PrizeTier      `json:"prizeTiers"`
-	DirectPrizeTiers    []PrizeTier      `json:"directPrizeTiers"`
-	SocialPrizeTiers    []PrizeTier      `json:"socialPrizeTiers"`
-	GroupLink           string           `json:"groupLink"`
-	FrontendPublicURL   string           `json:"frontendPublicUrl"`
-	Admin               AdminConfig      `json:"admin"`
-	Sub2API             Sub2APIConfig    `json:"sub2api"`
-	Invitation          InvitationConfig `json:"invitation"`
-	Telegram            TelegramConfig   `json:"telegram"`
+	DailyMaxUsers       int                   `json:"dailyMaxUsers"`
+	DailyLimitMode      string                `json:"dailyLimitMode"`
+	DirectDailyMaxUsers int                   `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers int                   `json:"socialDailyMaxUsers"`
+	PrizeTiers          []PrizeTier           `json:"prizeTiers"`
+	DirectPrizeTiers    []PrizeTier           `json:"directPrizeTiers"`
+	SocialPrizeTiers    []PrizeTier           `json:"socialPrizeTiers"`
+	GroupLink           string                `json:"groupLink"`
+	FrontendPublicURL   string                `json:"frontendPublicUrl"`
+	Admin               AdminConfig           `json:"admin"`
+	Sub2API             Sub2APIConfig         `json:"sub2api"`
+	Invitation          InvitationConfig      `json:"invitation"`
+	InvitationGuide     InvitationGuideConfig `json:"invitationGuide"`
+	Telegram            TelegramConfig        `json:"telegram"`
 }
 
 type InvitationConfig struct {
 	AfterTime string `json:"afterTime"`
 	Amount    Amount `json:"amount"`
+}
+
+type InvitationGuideConfig struct {
+	QQGroupNumber string `json:"qqGroupNumber"`
+	QQBotMention  string `json:"qqBotMention"`
 }
 
 type AdminConfig struct {

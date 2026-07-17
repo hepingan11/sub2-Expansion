@@ -19,6 +19,7 @@ import {
   Sub2APIGroupRateMonitor,
   Sub2APISettings,
   InvitationSettings,
+  InvitationGuideSettings,
   TelegramSettings
 } from './api';
 
@@ -74,6 +75,11 @@ export const emptyTelegramSettings: TelegramSettings = {
 export const emptyInvitationSettings: InvitationSettings = {
   afterTime: '',
   amount: 0
+};
+
+export const emptyInvitationGuideSettings: InvitationGuideSettings = {
+  qqGroupNumber: '799128896',
+  qqBotMention: '@咕咕嘎嘎'
 };
 
 export const statusText: Record<RedeemCodeStatus, string> = {

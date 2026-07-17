@@ -13,9 +13,11 @@ import {
   GripVertical,
   KeyRound,
   LogOut,
+  MessageCircle,
   Pencil,
   Plus,
   Search,
+  Send,
   Settings2,
   ShieldCheck,
   Trash2,
@@ -73,6 +75,7 @@ import {
   RechargeRewardStats,
   Stats,
   InvitationSettings,
+  InvitationGuideSettings,
   InvitationRecord,
   InvitationStats,
   Sub2APIGroupRateMonitor,
@@ -106,6 +109,7 @@ import {
   emptyCheckInStats,
   emptyGroupRateMonitor,
   emptyInvitationSettings,
+  emptyInvitationGuideSettings,
   emptyStats,
   emptySub2APISettings,
   emptyTelegramSettings,
@@ -362,6 +366,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   const [rewards, setRewards] = useState<UserRechargeRewards | null>(null);
   const [checkInStatus, setCheckInStatus] = useState<CheckInResult | null>(null);
   const [invitation, setInvitation] = useState<UserInvitation | null>(null);
+  const [invitationGuidePlatform, setInvitationGuidePlatform] = useState<'qq' | 'telegram'>('qq');
   const [generatingInviteCode, setGeneratingInviteCode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [claimingTierId, setClaimingTierId] = useState<number | null>(null);
@@ -458,8 +463,10 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   async function copyInviteCode() {
     if (!invitation?.code) return;
     try {
-      await navigator.clipboard.writeText(invitation.code);
-      notifySuccess('邀请码已复制');
+      const telegramInviteURL = invitation.guides?.telegram?.inviteUrl?.trim() ?? '';
+      const copyTelegramLink = invitationGuidePlatform === 'telegram' && telegramInviteURL;
+      await navigator.clipboard.writeText(copyTelegramLink || invitation.code);
+      notifySuccess(copyTelegramLink ? 'Telegram 邀请链接已复制' : '邀请码已复制');
     } catch {
       notifyError('复制失败，请手动复制邀请码');
     }
@@ -487,6 +494,27 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   const checkInGroupLink = checkInStatus?.groupLink?.trim() ?? '';
   const publicSocialPrizeTiers = Array.isArray(checkInStatus?.socialPrizeTiers) ? checkInStatus.socialPrizeTiers : [];
   const socialBindings = Array.isArray(user?.socialBindings) ? user.socialBindings : [];
+  const qqInvitationGuide = invitation?.guides?.qq ?? {
+    platform: 'qq' as const,
+    groupNumber: '799128896',
+    groupLink: checkInGroupLink,
+    botMention: '@咕咕嘎嘎',
+    rewardAmount: invitation?.rewardAmount ?? 0,
+    afterTime: invitation?.afterTime ?? '',
+    enabled: invitation?.enabled ?? false
+  };
+  const telegramInvitationGuide = invitation?.guides?.telegram ?? {
+    platform: 'telegram' as const,
+    groupLink: '',
+    botUsername: '',
+    inviteUrl: '',
+    membershipCheckEnabled: false,
+    rewardAmount: invitation?.rewardAmount ?? 0,
+    afterTime: invitation?.afterTime ?? '',
+    enabled: invitation?.enabled ?? false
+  };
+  const activeInvitationGuide = invitationGuidePlatform === 'telegram' ? telegramInvitationGuide : qqInvitationGuide;
+  const activeInvitationReward = Number(activeInvitationGuide.rewardAmount ?? 0);
 
   return (
     <main className="user-layout">
@@ -615,10 +643,12 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           <div>
             <span className="eyebrow">Invitation</span>
             <h2>邀请新用户</h2>
-            <p>将专属邀请码发送到 QQ 群 799128896，由新人通过机器人返回的绑定链接完成邀请。</p>
+            <p>{invitationGuidePlatform === 'telegram'
+              ? '将专属 Telegram 邀请链接发送给新人，由 Bot 校验身份并返回网页登录绑定链接。'
+              : `将专属邀请码发送到 QQ 群 ${qqInvitationGuide.groupNumber || '未配置'}，由新人通过机器人返回的绑定链接完成邀请。`}</p>
           </div>
-          <div className={`invitation-status ${invitation?.enabled ? 'is-active' : ''}`}>
-            {invitation?.enabled ? `每位奖励 ${Number(invitation.rewardAmount).toFixed(2)}` : '活动暂未启用'}
+          <div className={`invitation-status ${activeInvitationGuide.enabled ? 'is-active' : ''}`}>
+            {activeInvitationGuide.enabled ? `每位奖励 ${activeInvitationReward.toFixed(2)}` : '活动暂未启用'}
           </div>
         </div>
         <div className="invitation-code-row">
@@ -629,7 +659,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           {invitation?.code ? (
             <button className="ghost-btn" type="button" onClick={copyInviteCode} title="复制邀请码">
               <Copy size={17} />
-              复制
+              {invitationGuidePlatform === 'telegram' && telegramInvitationGuide.inviteUrl ? '复制邀请链接' : '复制邀请码'}
             </button>
           ) : (
             <button className="primary-btn" type="button" onClick={generateInviteCode} disabled={loading || generatingInviteCode}>
@@ -639,37 +669,90 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           )}
         </div>
         <div className="invitation-guide">
-          <div className="invitation-guide-head">
-            <UserPlus size={17} />
-            <strong>如何完成一次有效邀请</strong>
+          <div className="invitation-guide-toolbar">
+            <div className="invitation-guide-head">
+              <UserPlus size={17} />
+              <strong>如何完成一次有效邀请</strong>
+            </div>
+            <div className="invitation-platform-switch" role="tablist" aria-label="邀请平台">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={invitationGuidePlatform === 'qq'}
+                className={invitationGuidePlatform === 'qq' ? 'is-active' : ''}
+                onClick={() => setInvitationGuidePlatform('qq')}
+              >
+                <MessageCircle size={15} />
+                QQ
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={invitationGuidePlatform === 'telegram'}
+                className={invitationGuidePlatform === 'telegram' ? 'is-active' : ''}
+                onClick={() => setInvitationGuidePlatform('telegram')}
+              >
+                <Send size={15} />
+                Telegram
+              </button>
+            </div>
           </div>
-          <ol>
-            <li>
-              <span>1</span>
-              <div>让新人加入 QQ 群 <strong>799128896</strong>{checkInGroupLink && <>，也可点击上方群链接加入</>}。</div>
-            </li>
-            <li>
-              <span>2</span>
-              <div>新人先注册 Sub2API 账号，账号创建时间必须晚于 <strong>{formatOptionalDate(invitation?.afterTime)}</strong>。</div>
-            </li>
-            <li>
-              <span>3</span>
-              <div>新人在群里发送 <code>@咕咕嘎嘎 绑定{invitation?.code || '你的邀请码'}</code>。</div>
-            </li>
-            <li>
-              <span>4</span>
-              <div>机器人会返回专属绑定链接，链接包含平台账号和邀请码，请勿转发给其他人。</div>
-            </li>
-            <li>
-              <span>5</span>
-              <div>新人点击链接并成功登录一次即完成绑定；成功后邀请人获得 <strong>{Number(invitation?.rewardAmount ?? 0).toFixed(2)} 余额</strong>。</div>
-            </li>
-          </ol>
+          {invitationGuidePlatform === 'qq' ? (
+            <ol>
+              <li>
+                <span>1</span>
+                <div>让新人加入 QQ 群 <strong>{qqInvitationGuide.groupNumber || '群号未配置'}</strong>{qqInvitationGuide.groupLink && <>，<a href={qqInvitationGuide.groupLink} target="_blank" rel="noreferrer">打开群链接</a></>}。</div>
+              </li>
+              <li>
+                <span>2</span>
+                <div>新人先注册 Sub2API 账号，账号创建时间必须晚于 <strong>{formatOptionalDate(qqInvitationGuide.afterTime)}</strong>。</div>
+              </li>
+              <li>
+                <span>3</span>
+                <div>新人在群里发送 <code>{qqInvitationGuide.botMention || '机器人称呼未配置'} 绑定{invitation?.code || '你的邀请码'}</code>。</div>
+              </li>
+              <li>
+                <span>4</span>
+                <div>机器人会返回专属绑定链接，链接包含平台账号和邀请码，请勿转发给其他人。</div>
+              </li>
+              <li>
+                <span>5</span>
+                <div>新人点击链接并成功登录一次即完成绑定；成功后邀请人获得 <strong>{activeInvitationReward.toFixed(2)} 余额</strong>。</div>
+              </li>
+            </ol>
+          ) : (
+            <ol>
+              <li>
+                <span>1</span>
+                <div>让新人先加入指定 Telegram 群组{telegramInvitationGuide.groupLink
+                  ? <>，<a href={telegramInvitationGuide.groupLink} target="_blank" rel="noreferrer">打开群链接</a></>
+                  : <>，<strong>群链接暂未配置</strong></>}。</div>
+              </li>
+              <li>
+                <span>2</span>
+                <div>新人先注册 Sub2API 账号，账号创建时间必须晚于 <strong>{formatOptionalDate(telegramInvitationGuide.afterTime)}</strong>。</div>
+              </li>
+              <li>
+                <span>3</span>
+                <div>将专属邀请链接发送给新人：{telegramInvitationGuide.inviteUrl
+                  ? <a className="invitation-deep-link" href={telegramInvitationGuide.inviteUrl} target="_blank" rel="noreferrer">{telegramInvitationGuide.inviteUrl}</a>
+                  : <strong>连接 Telegram Bot 并生成邀请码后显示</strong>}。</div>
+              </li>
+              <li>
+                <span>4</span>
+                <div>新人打开链接并点击 Start；Bot {telegramInvitationGuide.membershipCheckEnabled ? '确认已加入指定群组后' : '识别 Telegram 身份后'}返回专属网页登录绑定链接。</div>
+              </li>
+              <li>
+                <span>5</span>
+                <div>新人登录 Sub2API 账号完成绑定；成功后邀请人获得 <strong>{activeInvitationReward.toFixed(2)} 余额</strong>。</div>
+              </li>
+            </ol>
+          )}
         </div>
         <div className="invitation-metrics">
           <div><span>成功邀请</span><strong>{invitation?.successfulInvites ?? 0}</strong></div>
           <div><span>累计奖励</span><strong>{Number(invitation?.totalReward ?? 0).toFixed(2)}</strong></div>
-          <div><span>新人时间门槛</span><strong>{formatOptionalDate(invitation?.afterTime)}</strong></div>
+          <div><span>新人时间门槛</span><strong>{formatOptionalDate(activeInvitationGuide.afterTime)}</strong></div>
         </div>
         {invitation?.invitedByCode && (
           <div className="invitation-bound-note">
@@ -891,6 +974,8 @@ function Dashboard({
   const [telegramConnecting, setTelegramConnecting] = useState(false);
   const [invitationSettings, setInvitationSettings] = useState<InvitationSettings>(emptyInvitationSettings);
   const [invitationSettingsDraft, setInvitationSettingsDraft] = useState<InvitationSettings>(emptyInvitationSettings);
+  const [invitationGuide, setInvitationGuide] = useState<InvitationGuideSettings>(emptyInvitationGuideSettings);
+  const [invitationGuideDraft, setInvitationGuideDraft] = useState<InvitationGuideSettings>(emptyInvitationGuideSettings);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [groupRateMonitor, setGroupRateMonitor] = useState<Sub2APIGroupRateMonitor>(emptyGroupRateMonitor);
@@ -975,6 +1060,9 @@ function Dashboard({
     };
     setInvitationSettings(invitationDraft);
     setInvitationSettingsDraft(invitationDraft);
+    const nextInvitationGuide = settingsData.invitationGuide ?? emptyInvitationGuideSettings;
+    setInvitationGuide(nextInvitationGuide);
+    setInvitationGuideDraft(nextInvitationGuide);
   }
 
   async function loadCheckInSettings() {
@@ -1220,6 +1308,8 @@ function Dashboard({
     sub2apiDraft,
     invitationSettings,
     invitationSettingsDraft,
+    invitationGuide,
+    invitationGuideDraft,
     telegram,
     telegramDraft
   );
@@ -1292,6 +1382,14 @@ function Dashboard({
       afterTime: invitationSettingsDraft.afterTime ? new Date(invitationSettingsDraft.afterTime).toISOString() : '',
       amount: invitationAmount
     };
+    const parsedInvitationGuide: InvitationGuideSettings = {
+      qqGroupNumber: invitationGuideDraft.qqGroupNumber.trim(),
+      qqBotMention: invitationGuideDraft.qqBotMention.trim()
+    };
+    if (!parsedInvitationGuide.qqGroupNumber || !parsedInvitationGuide.qqBotMention) {
+      notifyError('QQ 邀请教程的群号和机器人称呼不能为空');
+      return;
+    }
 
     setSettingsSaving(true);
     setSettingsSaved(false);
@@ -1308,7 +1406,7 @@ function Dashboard({
         return;
       }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), parsedAdminSettings, parsedSub2API, parsedInvitation, parsedTelegram);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), parsedAdminSettings, parsedSub2API, parsedInvitation, parsedInvitationGuide, parsedTelegram);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1342,6 +1440,9 @@ function Dashboard({
       const savedInvitationDraft = { ...savedInvitation, afterTime: toDateTimeLocal(savedInvitation.afterTime) };
       setInvitationSettings(savedInvitationDraft);
       setInvitationSettingsDraft(savedInvitationDraft);
+      const savedInvitationGuide = settings.invitationGuide ?? emptyInvitationGuideSettings;
+      setInvitationGuide(savedInvitationGuide);
+      setInvitationGuideDraft(savedInvitationGuide);
       setSettingsSaved(true);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '保存设置失败');
@@ -1730,6 +1831,40 @@ function Dashboard({
             </label>
           </div>
           <p>只有通过群机器人链接完成社交账号绑定，且 Sub2API 账号创建时间严格晚于该门槛，邀请人才会获得奖励。</p>
+        </div>
+
+        <div className="invitation-settings-editor">
+          <div className="settings-title">
+            <UserPlus size={18} />
+            <span>QQ 邀请教程</span>
+          </div>
+          <div className="invitation-settings-grid">
+            <label>
+              QQ 群号
+              <input
+                value={invitationGuideDraft.qqGroupNumber}
+                maxLength={100}
+                onChange={(event) => {
+                  setInvitationGuideDraft((current) => ({ ...current, qqGroupNumber: event.target.value }));
+                  setSettingsSaved(false);
+                }}
+                placeholder="799128896"
+              />
+            </label>
+            <label>
+              QQ 机器人称呼
+              <input
+                value={invitationGuideDraft.qqBotMention}
+                maxLength={100}
+                onChange={(event) => {
+                  setInvitationGuideDraft((current) => ({ ...current, qqBotMention: event.target.value }));
+                  setSettingsSaved(false);
+                }}
+                placeholder="@咕咕嘎嘎"
+              />
+            </label>
+          </div>
+          <p>用户邀请教程会组合显示“机器人称呼 + 绑定 + 邀请码”。群链接继续使用上方配置。</p>
         </div>
 
         <div className="checkin-tier-grid">

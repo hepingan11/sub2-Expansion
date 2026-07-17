@@ -88,6 +88,9 @@ func (app *App) bindSocialAccount(c *gin.Context) {
 		}
 		invitation, err := app.bindInvitation(c.Request.Context(), user, inviteCode, platform, externalUserID)
 		if err != nil {
+			if platform == telegramPlatform && resp.Bound {
+				app.queueTelegramBindingNotifications(externalUserID, user.ID, true, nil)
+			}
 			if isBusinessConflict(err) {
 				conflict(c, err.Error())
 				return
@@ -96,6 +99,9 @@ func (app *App) bindSocialAccount(c *gin.Context) {
 			return
 		}
 		resp.Invitation = &invitation
+	}
+	if platform == telegramPlatform {
+		app.queueTelegramBindingNotifications(externalUserID, user.ID, resp.Bound, resp.Invitation)
 	}
 	c.JSON(http.StatusOK, resp)
 }

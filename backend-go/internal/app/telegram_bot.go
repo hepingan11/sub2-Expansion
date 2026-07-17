@@ -93,6 +93,10 @@ func (app *App) connectTelegramBot(c *gin.Context) {
 			return
 		}
 	}
+	if err := app.saveSetting(telegramBotUsernameKey, strings.TrimPrefix(strings.TrimSpace(me.Username), "@")); err != nil {
+		serverError(c, err)
+		return
+	}
 	if err := app.telegramDeleteWebhook(c.Request.Context(), cfg, true); err != nil {
 		c.JSON(http.StatusBadGateway, APIError{Message: "清理 Telegram Webhook 失败：" + err.Error()})
 		return
@@ -151,6 +155,9 @@ func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig) {
 		log.Printf("Telegram bot getMe failed: %v", err)
 	} else {
 		username = strings.TrimSpace(me.Username)
+		if err := app.saveSetting(telegramBotUsernameKey, strings.TrimPrefix(username, "@")); err != nil {
+			log.Printf("Telegram bot username save failed: %v", err)
+		}
 		log.Printf("Telegram bot started as @%s", username)
 	}
 	if err := app.telegramDeleteWebhook(ctx, cfg, true); err != nil {
@@ -284,6 +291,15 @@ func (app *App) handleTelegramCommand(ctx context.Context, cfg TelegramConfig, t
 		}
 		return app.telegramStartMessage(telegramUserID)
 	case "bind":
+		if binding, err := app.telegramBinding(telegramUserID); err == nil {
+			frontendURL, err := app.frontendPublicURL()
+			if err != nil {
+				return "", err
+			}
+			return telegramAlreadyBoundMessage(binding.UserID, frontendURL), nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", err
+		}
 		inviteCode := strings.TrimSpace(arg)
 		if inviteCode != "" {
 			code, err := normalizeInvitationCode(inviteCode)
@@ -313,6 +329,35 @@ func (app *App) handleTelegramCommand(ctx context.Context, cfg TelegramConfig, t
 	default:
 		return telegramHelpMessage(), nil
 	}
+}
+
+func telegramAlreadyBoundMessage(userID int64, frontendURL string) string {
+	message := fmt.Sprintf("这个 Telegram 账号已经绑定 Sub2API 用户 %d。", userID)
+	if frontendURL = strings.TrimRight(strings.TrimSpace(frontendURL), "/"); frontendURL != "" {
+		return message + "\n前端公开地址：\n" + frontendURL
+	}
+	return message + "\n前端公开地址尚未配置。"
+}
+
+func telegramBindingCompletedMessage(userID int64, frontendURL string, bindingCreated bool, invitation *InvitationBindingResult) string {
+	lines := make([]string, 0, 6)
+	if bindingCreated {
+		lines = append(lines, "Telegram 账号绑定成功。", fmt.Sprintf("Sub2API 用户：%d", userID))
+	}
+	if invitation != nil && invitation.Bound {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "邀请关系建立成功。", "邀请码："+invitation.InviteCode, "邀请奖励已发放给邀请人。")
+	}
+	if frontendURL = strings.TrimRight(strings.TrimSpace(frontendURL), "/"); frontendURL != "" {
+		lines = append(lines, "", "前端公开地址：", frontendURL)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func telegramInvitationSucceededMessage(invitation InvitationBindingResult) string {
+	return fmt.Sprintf("邀请成功。\n邀请码：%s\n邀请奖励：%s\n奖励已发放到你的 Sub2API 余额。", invitation.InviteCode, invitation.RewardAmount.StringFixed(2))
 }
 
 func (app *App) telegramStartMessage(telegramUserID int64) (string, error) {
@@ -509,6 +554,70 @@ func (app *App) telegramSendMessage(ctx context.Context, cfg TelegramConfig, cha
 		"text":    text,
 	}
 	return app.telegramJSON(ctx, cfg, "sendMessage", payload, nil)
+}
+
+func (app *App) queueTelegramBindingNotifications(externalUserID string, userID int64, bindingCreated bool, invitation *InvitationBindingResult) {
+	if !bindingCreated && (invitation == nil || !invitation.Bound) {
+		return
+	}
+	chatID, err := strconv.ParseInt(strings.TrimSpace(externalUserID), 10, 64)
+	if err != nil {
+		log.Printf("Telegram binding notification skipped: invalid chat_id=%q", externalUserID)
+		return
+	}
+	frontendURL, err := app.frontendPublicURL()
+	if err != nil {
+		log.Printf("Telegram binding notification frontend URL failed: %v", err)
+		frontendURL = ""
+	}
+	message := telegramBindingCompletedMessage(userID, frontendURL, bindingCreated, invitation)
+	app.queueTelegramMessage(chatID, message)
+	if invitation != nil && invitation.Bound && invitation.InviterUserID > 0 {
+		app.queueTelegramMessageForSub2User(invitation.InviterUserID, telegramInvitationSucceededMessage(*invitation))
+	}
+}
+
+func (app *App) queueTelegramMessage(chatID int64, text string) {
+	go app.sendTelegramNotification(chatID, text)
+}
+
+func (app *App) queueTelegramMessageForSub2User(userID int64, text string) {
+	go func() {
+		var binding SocialAccountBinding
+		err := app.db.Where("user_id = ? AND platform = ?", userID, telegramPlatform).First(&binding).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return
+		}
+		if err != nil {
+			log.Printf("Telegram invitation notification binding lookup failed: user_id=%d error=%v", userID, err)
+			return
+		}
+		chatID, err := strconv.ParseInt(strings.TrimSpace(binding.ExternalUserID), 10, 64)
+		if err != nil {
+			log.Printf("Telegram invitation notification skipped: invalid chat_id=%q", binding.ExternalUserID)
+			return
+		}
+		app.sendTelegramNotification(chatID, text)
+	}()
+}
+
+func (app *App) sendTelegramNotification(chatID int64, text string) {
+	if chatID == 0 || strings.TrimSpace(text) == "" {
+		return
+	}
+	cfg, err := app.effectiveTelegramConfig()
+	if err != nil {
+		log.Printf("Telegram notification config failed: %v", err)
+		return
+	}
+	if !cfg.Enabled || strings.TrimSpace(cfg.BotToken) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := app.telegramSendMessage(ctx, cfg, chatID, text); err != nil {
+		log.Printf("Telegram notification failed: chat_id=%d error=%v", chatID, err)
+	}
 }
 
 func (app *App) telegramJSON(ctx context.Context, cfg TelegramConfig, method string, payload any, out any) error {

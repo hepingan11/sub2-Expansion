@@ -10,6 +10,7 @@ import {
   Stats,
   Sub2APISettings,
   InvitationSettings,
+  InvitationGuideSettings,
   TelegramSettings
 } from './api';
 import { DashboardSection, emptyStats } from './appConstants';
@@ -340,6 +341,8 @@ export function settingsChanged(
   sub2apiDraft: Sub2APISettings,
   invitation: InvitationSettings,
   invitationDraft: InvitationSettings,
+  invitationGuide: InvitationGuideSettings,
+  invitationGuideDraft: InvitationGuideSettings,
   telegram: TelegramSettings,
   telegramDraft: TelegramSettings
 ) {
@@ -374,6 +377,9 @@ export function settingsChanged(
     return true;
   }
   if (invitation.afterTime !== invitationDraft.afterTime || Number(invitation.amount) !== Number(invitationDraft.amount)) {
+    return true;
+  }
+  if (invitationGuide.qqGroupNumber !== invitationGuideDraft.qqGroupNumber || invitationGuide.qqBotMention !== invitationGuideDraft.qqBotMention) {
     return true;
   }
   if (JSON.stringify(toSub2APIDraft(sub2api)) !== JSON.stringify(sub2apiDraft)) {

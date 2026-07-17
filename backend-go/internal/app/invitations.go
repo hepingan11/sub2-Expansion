@@ -19,22 +19,37 @@ import (
 const invitationCodeLength = 8
 
 type UserInvitationResponse struct {
-	Code              string    `json:"code"`
-	SuccessfulInvites int64     `json:"successfulInvites"`
-	TotalReward       Amount    `json:"totalReward"`
-	RewardAmount      Amount    `json:"rewardAmount"`
-	AfterTime         string    `json:"afterTime"`
-	Enabled           bool      `json:"enabled"`
-	InvitedByCode     string    `json:"invitedByCode,omitempty"`
-	InvitedAt         *JSONTime `json:"invitedAt,omitempty"`
+	Code              string                         `json:"code"`
+	SuccessfulInvites int64                          `json:"successfulInvites"`
+	TotalReward       Amount                         `json:"totalReward"`
+	RewardAmount      Amount                         `json:"rewardAmount"`
+	AfterTime         string                         `json:"afterTime"`
+	Enabled           bool                           `json:"enabled"`
+	InvitedByCode     string                         `json:"invitedByCode,omitempty"`
+	InvitedAt         *JSONTime                      `json:"invitedAt,omitempty"`
+	Guides            map[string]UserInvitationGuide `json:"guides"`
+}
+
+type UserInvitationGuide struct {
+	Platform               string `json:"platform"`
+	GroupNumber            string `json:"groupNumber,omitempty"`
+	GroupLink              string `json:"groupLink,omitempty"`
+	BotMention             string `json:"botMention,omitempty"`
+	BotUsername            string `json:"botUsername,omitempty"`
+	InviteURL              string `json:"inviteUrl,omitempty"`
+	MembershipCheckEnabled bool   `json:"membershipCheckEnabled,omitempty"`
+	RewardAmount           Amount `json:"rewardAmount"`
+	AfterTime              string `json:"afterTime"`
+	Enabled                bool   `json:"enabled"`
 }
 
 type InvitationBindingResult struct {
-	Bound        bool   `json:"bound"`
-	AlreadyBound bool   `json:"alreadyBound"`
-	InviteCode   string `json:"inviteCode"`
-	RewardAmount Amount `json:"rewardAmount"`
-	Message      string `json:"message"`
+	Bound         bool   `json:"bound"`
+	AlreadyBound  bool   `json:"alreadyBound"`
+	InviteCode    string `json:"inviteCode"`
+	RewardAmount  Amount `json:"rewardAmount"`
+	Message       string `json:"message"`
+	InviterUserID int64  `json:"-"`
 }
 
 func (app *App) listAdminInvitations(c *gin.Context) {
@@ -176,6 +191,11 @@ func (app *App) userInvitationResponse(userID int64) (UserInvitationResponse, er
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return UserInvitationResponse{}, err
 	}
+	guides, err := app.userInvitationGuides(response.Code)
+	if err != nil {
+		return UserInvitationResponse{}, err
+	}
+	response.Guides = guides
 	type rewardSummary struct {
 		Count int64
 		Total decimal.Decimal
@@ -197,6 +217,55 @@ func (app *App) userInvitationResponse(userID int64) (UserInvitationResponse, er
 		return UserInvitationResponse{}, err
 	}
 	return response, nil
+}
+
+func (app *App) userInvitationGuides(inviteCode string) (map[string]UserInvitationGuide, error) {
+	guideConfig, err := app.loadInvitationGuideConfig()
+	if err != nil {
+		return nil, err
+	}
+	qqSettings, err := app.loadPlatformSettings("qq")
+	if err != nil {
+		return nil, err
+	}
+	telegramSettings, err := app.loadPlatformSettings(telegramPlatform)
+	if err != nil {
+		return nil, err
+	}
+	telegramConfig, err := app.effectiveTelegramConfig()
+	if err != nil {
+		return nil, err
+	}
+	telegramGroupLink := strings.TrimSpace(telegramConfig.GroupJoinURL)
+	if telegramGroupLink == "" {
+		telegramGroupLink = strings.TrimSpace(telegramSettings.CheckIn.GroupLink)
+	}
+	botUsername := strings.TrimPrefix(strings.TrimSpace(telegramConfig.BotUsername), "@")
+	inviteURL := ""
+	if botUsername != "" && strings.TrimSpace(inviteCode) != "" {
+		inviteURL = fmt.Sprintf("https://t.me/%s?start=%s", botUsername, inviteCode)
+	}
+	return map[string]UserInvitationGuide{
+		"qq": {
+			Platform:     "qq",
+			GroupNumber:  guideConfig.QQGroupNumber,
+			GroupLink:    strings.TrimSpace(qqSettings.CheckIn.GroupLink),
+			BotMention:   guideConfig.QQBotMention,
+			RewardAmount: qqSettings.Invitation.Amount,
+			AfterTime:    qqSettings.Invitation.AfterTime,
+			Enabled:      qqSettings.Invitation.AfterTime != "" && qqSettings.Invitation.Amount.Cmp(decimal.Zero) > 0,
+		},
+		telegramPlatform: {
+			Platform:               telegramPlatform,
+			GroupLink:              telegramGroupLink,
+			BotUsername:            botUsername,
+			InviteURL:              inviteURL,
+			MembershipCheckEnabled: telegramConfig.MembershipCheckEnabled,
+			RewardAmount:           telegramSettings.Invitation.Amount,
+			AfterTime:              telegramSettings.Invitation.AfterTime,
+			Enabled:                telegramSettings.Invitation.AfterTime != "" && telegramSettings.Invitation.Amount.Cmp(decimal.Zero) > 0,
+		},
+	}, nil
 }
 
 func (app *App) ensureInvitationCode(userID int64) (InvitationCode, error) {
@@ -289,7 +358,7 @@ func (app *App) bindInvitation(ctx context.Context, invitee sub2APIUserSnapshot,
 			return InvitationBindingResult{}, businessConflict("当前账号已经绑定过其他邀请人")
 		}
 		if binding.RewardStatus == inviteRewarded {
-			return InvitationBindingResult{AlreadyBound: true, InviteCode: binding.InviteCode, RewardAmount: binding.RewardAmount, Message: "邀请关系已绑定，奖励已发放"}, nil
+			return InvitationBindingResult{AlreadyBound: true, InviteCode: binding.InviteCode, RewardAmount: binding.RewardAmount, Message: "邀请关系已绑定，奖励已发放", InviterUserID: binding.InviterUserID}, nil
 		}
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		binding = InvitationBinding{
@@ -345,5 +414,5 @@ func (app *App) bindInvitation(ctx context.Context, invitee sub2APIUserSnapshot,
 	}).Error; err != nil {
 		return InvitationBindingResult{}, err
 	}
-	return InvitationBindingResult{Bound: true, InviteCode: code.Code, RewardAmount: binding.RewardAmount, Message: "邀请绑定成功，奖励已发放给邀请人"}, nil
+	return InvitationBindingResult{Bound: true, InviteCode: code.Code, RewardAmount: binding.RewardAmount, Message: "邀请绑定成功，奖励已发放给邀请人", InviterUserID: binding.InviterUserID}, nil
 }

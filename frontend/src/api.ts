@@ -99,6 +99,7 @@ export interface CheckInSettings {
   admin: AdminSettings;
   sub2api: Sub2APISettings;
   invitation: InvitationSettings;
+  invitationGuide: InvitationGuideSettings;
   telegram: TelegramSettings;
 }
 
@@ -147,6 +148,11 @@ export interface Sub2APISettings {
   adminPassword?: string;
   adminPasswordSet: boolean;
   timeoutSeconds: number;
+}
+
+export interface InvitationGuideSettings {
+  qqGroupNumber: string;
+  qqBotMention: string;
 }
 
 export interface TelegramSettings {
@@ -386,6 +392,20 @@ export interface UserInvitation {
   enabled: boolean;
   invitedByCode?: string;
   invitedAt?: string;
+  guides: Partial<Record<'qq' | 'telegram', UserInvitationGuide>>;
+}
+
+export interface UserInvitationGuide {
+  platform: 'qq' | 'telegram';
+  groupNumber?: string;
+  groupLink?: string;
+  botMention?: string;
+  botUsername?: string;
+  inviteUrl?: string;
+  membershipCheckEnabled?: boolean;
+  rewardAmount: number;
+  afterTime: string;
+  enabled: boolean;
 }
 
 export interface InvitationRecord {
@@ -556,11 +576,12 @@ export async function updateCheckInSettings(
   admin: AdminSettings,
   sub2api: Sub2APISettings,
   invitation: InvitationSettings,
+  invitationGuide: InvitationGuideSettings,
   telegram: TelegramSettings
 ) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, admin, sub2api, invitation, telegram })
+    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, admin, sub2api, invitation, invitationGuide, telegram })
   });
 }
 

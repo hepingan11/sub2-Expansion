@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -105,6 +106,10 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if err := app.saveInvitationGuideConfig(req.InvitationGuide); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
 	adminConfig := req.Admin
 	if strings.TrimSpace(adminConfig.Username) == "" && adminConfig.Password == "" {
 		currentAdmin, err := app.effectiveAdminConfig()
@@ -176,6 +181,10 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
+	invitationGuide, err := app.loadInvitationGuideConfig()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	admin, err := app.effectiveAdminConfig()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
@@ -207,8 +216,49 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		Admin:               admin,
 		Sub2API:             sub2api,
 		Invitation:          invitation,
+		InvitationGuide:     invitationGuide,
 		Telegram:            telegram,
 	}, nil
+}
+
+func (app *App) loadInvitationGuideConfig() (InvitationGuideConfig, error) {
+	qqGroupNumber, err := app.settingOrDefault(invitationQQGroupKey, "799128896")
+	if err != nil {
+		return InvitationGuideConfig{}, err
+	}
+	qqBotMention, err := app.settingOrDefault(invitationQQBotKey, "@咕咕嘎嘎")
+	if err != nil {
+		return InvitationGuideConfig{}, err
+	}
+	return InvitationGuideConfig{
+		QQGroupNumber: strings.TrimSpace(qqGroupNumber),
+		QQBotMention:  strings.TrimSpace(qqBotMention),
+	}, nil
+}
+
+func (app *App) saveInvitationGuideConfig(config InvitationGuideConfig) error {
+	config.QQGroupNumber = strings.TrimSpace(config.QQGroupNumber)
+	config.QQBotMention = strings.TrimSpace(config.QQBotMention)
+	if config.QQGroupNumber == "" && config.QQBotMention == "" {
+		current, err := app.loadInvitationGuideConfig()
+		if err != nil {
+			return err
+		}
+		config = current
+	}
+	if config.QQGroupNumber == "" {
+		return errors.New("QQ 邀请教程群号不能为空")
+	}
+	if config.QQBotMention == "" {
+		return errors.New("QQ 邀请教程机器人称呼不能为空")
+	}
+	if utf8.RuneCountInString(config.QQGroupNumber) > 100 || utf8.RuneCountInString(config.QQBotMention) > 100 {
+		return errors.New("QQ 邀请教程配置不能超过 100 个字符")
+	}
+	if err := app.saveSetting(invitationQQGroupKey, config.QQGroupNumber); err != nil {
+		return err
+	}
+	return app.saveSetting(invitationQQBotKey, config.QQBotMention)
 }
 
 func normalizeInvitationConfig(input InvitationConfig) (InvitationConfig, error) {
@@ -410,6 +460,9 @@ func (app *App) effectiveTelegramConfig() (TelegramConfig, error) {
 	if cfg.GroupJoinURL, err = app.settingOrDefault(telegramGroupJoinURLKey, ""); err != nil {
 		return TelegramConfig{}, err
 	}
+	if cfg.BotUsername, err = app.settingOrDefault(telegramBotUsernameKey, ""); err != nil {
+		return TelegramConfig{}, err
+	}
 	if ttl, found, err := app.getSetting(telegramBindingTokenTTLKey); err != nil {
 		return TelegramConfig{}, err
 	} else if found {
@@ -428,6 +481,7 @@ func (app *App) effectiveTelegramConfig() (TelegramConfig, error) {
 	}
 	cfg.RequiredGroupChatID = strings.TrimSpace(cfg.RequiredGroupChatID)
 	cfg.GroupJoinURL = strings.TrimSpace(cfg.GroupJoinURL)
+	cfg.BotUsername = strings.TrimPrefix(strings.TrimSpace(cfg.BotUsername), "@")
 	if cfg.BindingTokenTTLMinutes <= 0 {
 		cfg.BindingTokenTTLMinutes = 10
 	}

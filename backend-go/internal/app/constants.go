@@ -28,6 +28,8 @@ const (
 	checkInGroupLinkKey    = "check_in.group_link"
 	invitationAfterTimeKey = "invitation.after_time"
 	invitationAmountKey    = "invitation.amount"
+	invitationQQGroupKey   = "invitation.guide.qq_group"
+	invitationQQBotKey     = "invitation.guide.qq_bot_mention"
 	frontendPublicURLKey   = "app.frontend_public_url"
 	platformSettingsPrefix = "platform."
 
@@ -49,6 +51,7 @@ const (
 	telegramBotTokenKey            = "telegram.bot_token"
 	telegramBotAPIBaseURLKey       = "telegram.api_base_url"
 	telegramBotPollIntervalSeconds = "telegram.poll_interval_seconds"
+	telegramBotUsernameKey         = "telegram.bot_username"
 	telegramMembershipCheckKey     = "telegram.membership_check_enabled"
 	telegramRequiredGroupChatIDKey = "telegram.required_group_chat_id"
 	telegramGroupJoinURLKey        = "telegram.group_join_url"
