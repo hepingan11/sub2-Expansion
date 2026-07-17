@@ -157,13 +157,17 @@ type Sub2APIConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled             bool   `json:"enabled"`
-	BotToken            string `json:"botToken,omitempty"`
-	BotTokenSet         bool   `json:"botTokenSet"`
-	APIBaseURL          string `json:"apiBaseUrl"`
-	PollIntervalSeconds int    `json:"pollIntervalSeconds"`
-	BotUsername         string `json:"botUsername,omitempty"`
-	Connected           bool   `json:"connected"`
+	Enabled                bool   `json:"enabled"`
+	BotToken               string `json:"botToken,omitempty"`
+	BotTokenSet            bool   `json:"botTokenSet"`
+	APIBaseURL             string `json:"apiBaseUrl"`
+	PollIntervalSeconds    int    `json:"pollIntervalSeconds"`
+	MembershipCheckEnabled bool   `json:"membershipCheckEnabled"`
+	RequiredGroupChatID    string `json:"requiredGroupChatId"`
+	GroupJoinURL           string `json:"groupJoinUrl"`
+	BindingTokenTTLMinutes int    `json:"bindingTokenTtlMinutes"`
+	BotUsername            string `json:"botUsername,omitempty"`
+	Connected              bool   `json:"connected"`
 }
 
 type RechargeActivityRequest struct {

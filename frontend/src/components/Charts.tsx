@@ -4,6 +4,51 @@ import type { ECharts } from 'echarts';
 
 import { CheckInStats, InvitationStats, RechargeRewardStats, Sub2APIGroupRateSeries } from '../api';
 
+const rateChartColors = ['#2563eb', '#16a34a', '#dc2626', '#d18a2c', '#7c3aed', '#0891b2', '#4f46e5'];
+
+function escapeTooltipHTML(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[character] ?? character));
+}
+
+function formatRateChartTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function toRateChartTimestamp(value: unknown) {
+  if (typeof value === 'number') {
+    return value;
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  return typeof value === 'string' ? new Date(value).getTime() : Number.NaN;
+}
+
+function effectiveRateAt(points: { timestamp: number; rate: number }[], timestamp: number) {
+  let low = 0;
+  let high = points.length - 1;
+  let match = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (points[middle].timestamp <= timestamp) {
+      match = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return match >= 0 ? points[match].rate : undefined;
+}
+
 export function RateLineChart({ series }: { series: Sub2APIGroupRateSeries[] }) {
   const chartRef = useRef<HTMLDivElement | null>(null);
 
@@ -14,14 +59,46 @@ export function RateLineChart({ series }: { series: Sub2APIGroupRateSeries[] }) 
     let disposed = false;
     let chart: ECharts | null = null;
     const resize = () => chart?.resize();
+    const tooltipSeries = series.map((item, index) => ({
+      name: `${item.groupName}${item.publicVisible ? ' · 公开' : ''}`,
+      color: rateChartColors[index % rateChartColors.length],
+      points: item.points
+        .map((point) => ({ timestamp: new Date(point.time).getTime(), rate: point.rate }))
+        .filter((point) => Number.isFinite(point.timestamp))
+        .sort((left, right) => left.timestamp - right.timestamp)
+    }));
     import('echarts').then((echarts) => {
       if (disposed || !chartRef.current) {
         return;
       }
       chart = echarts.init(chartRef.current);
       chart.setOption({
-        color: ['#2563eb', '#16a34a', '#dc2626', '#d18a2c', '#7c3aed', '#0891b2', '#4f46e5'],
-        tooltip: { trigger: 'axis' },
+        color: rateChartColors,
+        tooltip: {
+          trigger: 'axis',
+          confine: true,
+          extraCssText: 'max-height: 60vh; overflow-y: auto;',
+          axisPointer: { type: 'line' },
+          formatter: (rawParams: unknown) => {
+            const params = Array.isArray(rawParams) ? rawParams : [rawParams];
+            const first = params[0] as { axisValue?: unknown; value?: unknown } | undefined;
+            const pointValue = Array.isArray(first?.value) ? first.value[0] : undefined;
+            const timestamp = toRateChartTimestamp(first?.axisValue ?? pointValue);
+            if (!Number.isFinite(timestamp)) {
+              return '';
+            }
+            const rows = tooltipSeries.map((item) => {
+              const activeRate = effectiveRateAt(item.points, timestamp);
+              const value = activeRate === undefined ? '暂无' : `${activeRate}x`;
+              return `<div style="display:flex;align-items:center;gap:7px;min-width:210px;line-height:22px;">`
+                + `<span style="width:9px;height:9px;border-radius:50%;background:${item.color};flex:0 0 auto;"></span>`
+                + `<span style="flex:1;overflow-wrap:anywhere;">${escapeTooltipHTML(item.name)}</span>`
+                + `<strong style="margin-left:12px;white-space:nowrap;">${value}</strong>`
+                + '</div>';
+            });
+            return `<div style="font-weight:600;margin-bottom:5px;">${formatRateChartTime(timestamp)}</div>${rows.join('')}`;
+          }
+        },
         legend: { top: 0, type: 'scroll' },
         grid: { left: 44, right: 18, top: 48, bottom: 36 },
         xAxis: { type: 'time' },
@@ -33,7 +110,7 @@ export function RateLineChart({ series }: { series: Sub2APIGroupRateSeries[] }) 
         series: series.map((item) => ({
           name: `${item.groupName}${item.publicVisible ? ' · 公开' : ''}`,
           type: 'line',
-          smooth: true,
+          step: 'end',
           showSymbol: item.points.length < 18,
           data: item.points.map((point) => [point.time, point.rate])
         }))

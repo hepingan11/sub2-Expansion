@@ -2490,7 +2490,7 @@ function Dashboard({
           <section className="user-info-panel">
             <div className="settings-title">
               <CircleDollarSign size={18} />
-              <span>倍率变化折线图</span>
+              <span>倍率变化阶梯图</span>
             </div>
             <RateLineChart series={groupRateMonitor.series} />
           </section>
@@ -2773,6 +2773,20 @@ function Dashboard({
               </label>
               <span>{telegram.botTokenSet ? 'Bot Token 已保存，留空不会修改。' : '尚未保存 Bot Token。'}</span>
             </div>
+            <div className="telegram-control-line">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={telegramDraft.membershipCheckEnabled}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, membershipCheckEnabled: event.target.checked }));
+                    setSettingsSaved(false);
+                  }}
+                />
+                绑定前检查指定群成员身份
+              </label>
+              <span>Bot 必须是目标群管理员。</span>
+            </div>
             <div className="sub2api-grid">
               <label>
                 Bot Token
@@ -2815,10 +2829,46 @@ function Dashboard({
                 Bot Username
                 <input value={telegram.botUsername ? `@${telegram.botUsername}` : ''} readOnly placeholder="连接测试后显示" />
               </label>
+              <label>
+                目标群 Chat ID
+                <input
+                  value={telegramDraft.requiredGroupChatId}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, requiredGroupChatId: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder="-1001234567890"
+                />
+              </label>
+              <label>
+                加群链接
+                <input
+                  value={telegramDraft.groupJoinUrl}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, groupJoinUrl: event.target.value }));
+                    setSettingsSaved(false);
+                  }}
+                  placeholder="https://t.me/your_group"
+                />
+              </label>
+              <label>
+                绑定凭证有效期（分钟）
+                <input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  step="1"
+                  value={telegramDraft.bindingTokenTtlMinutes}
+                  onChange={(event) => {
+                    setTelegramDraft((current) => ({ ...current, bindingTokenTtlMinutes: Number(event.target.value) }));
+                    setSettingsSaved(false);
+                  }}
+                />
+              </label>
             </div>
             <div className="system-update-note">
               <span>保存配置后点击连接测试，后端会调用 Telegram getMe 并立即启动或重启 Bot 轮询。</span>
-              <span>用户在 Telegram 发送 /bind 后会收到前端绑定链接；绑定后可使用 /checkin、/invite、/me。</span>
+              <span>启用入群校验后，/start 邀请链接和 /bind 都会先检查群成员身份，通过后才签发短期绑定凭证。</span>
             </div>
           </div>
 

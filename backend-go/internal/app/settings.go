@@ -7,6 +7,7 @@ import (
 	"errors"
 	mathrand "math/rand"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -372,11 +373,12 @@ func (app *App) effectiveTelegramConfig() (TelegramConfig, error) {
 		pollInterval = 2
 	}
 	cfg := TelegramConfig{
-		Enabled:             app.cfg.TelegramBotEnabled,
-		BotToken:            strings.TrimSpace(app.cfg.TelegramBotToken),
-		BotTokenSet:         strings.TrimSpace(app.cfg.TelegramBotToken) != "",
-		APIBaseURL:          strings.TrimRight(strings.TrimSpace(app.cfg.TelegramBotAPIBaseURL), "/"),
-		PollIntervalSeconds: pollInterval,
+		Enabled:                app.cfg.TelegramBotEnabled,
+		BotToken:               strings.TrimSpace(app.cfg.TelegramBotToken),
+		BotTokenSet:            strings.TrimSpace(app.cfg.TelegramBotToken) != "",
+		APIBaseURL:             strings.TrimRight(strings.TrimSpace(app.cfg.TelegramBotAPIBaseURL), "/"),
+		PollIntervalSeconds:    pollInterval,
+		BindingTokenTTLMinutes: 10,
 	}
 	var err error
 	if enabled, found, err := app.getSetting(telegramEnabledKey); err != nil {
@@ -397,6 +399,24 @@ func (app *App) effectiveTelegramConfig() (TelegramConfig, error) {
 			cfg.PollIntervalSeconds = parsed
 		}
 	}
+	if enabled, found, err := app.getSetting(telegramMembershipCheckKey); err != nil {
+		return TelegramConfig{}, err
+	} else if found {
+		cfg.MembershipCheckEnabled = parseBoolSetting(enabled, false)
+	}
+	if cfg.RequiredGroupChatID, err = app.settingOrDefault(telegramRequiredGroupChatIDKey, ""); err != nil {
+		return TelegramConfig{}, err
+	}
+	if cfg.GroupJoinURL, err = app.settingOrDefault(telegramGroupJoinURLKey, ""); err != nil {
+		return TelegramConfig{}, err
+	}
+	if ttl, found, err := app.getSetting(telegramBindingTokenTTLKey); err != nil {
+		return TelegramConfig{}, err
+	} else if found {
+		if parsed, parseErr := strconv.Atoi(strings.TrimSpace(ttl)); parseErr == nil && parsed > 0 {
+			cfg.BindingTokenTTLMinutes = parsed
+		}
+	}
 	cfg.BotToken = strings.TrimSpace(cfg.BotToken)
 	cfg.BotTokenSet = cfg.BotToken != ""
 	cfg.APIBaseURL = strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/")
@@ -405,6 +425,11 @@ func (app *App) effectiveTelegramConfig() (TelegramConfig, error) {
 	}
 	if cfg.PollIntervalSeconds <= 0 {
 		cfg.PollIntervalSeconds = 2
+	}
+	cfg.RequiredGroupChatID = strings.TrimSpace(cfg.RequiredGroupChatID)
+	cfg.GroupJoinURL = strings.TrimSpace(cfg.GroupJoinURL)
+	if cfg.BindingTokenTTLMinutes <= 0 {
+		cfg.BindingTokenTTLMinutes = 10
 	}
 	cfg.Connected = cfg.Enabled && cfg.BotTokenSet
 	return cfg, nil
@@ -420,10 +445,32 @@ func (app *App) safeTelegramConfigForAdmin() (TelegramConfig, error) {
 }
 
 func (app *App) saveTelegramConfig(cfg TelegramConfig) error {
+	if cfg.BindingTokenTTLMinutes == 0 {
+		cfg.BindingTokenTTLMinutes = 10
+	}
+	if cfg.MembershipCheckEnabled && strings.TrimSpace(cfg.RequiredGroupChatID) == "" {
+		return errors.New("启用 Telegram 入群校验前请填写目标群 Chat ID")
+	}
+	if cfg.MembershipCheckEnabled && strings.TrimSpace(cfg.GroupJoinURL) == "" {
+		return errors.New("启用 Telegram 入群校验前请填写加群链接")
+	}
+	if cfg.MembershipCheckEnabled {
+		groupJoinURL, err := url.ParseRequestURI(strings.TrimSpace(cfg.GroupJoinURL))
+		if err != nil || groupJoinURL.Host == "" || groupJoinURL.Scheme != "https" && groupJoinURL.Scheme != "http" {
+			return errors.New("Telegram 加群链接必须是有效的 HTTP 或 HTTPS 地址")
+		}
+	}
+	if cfg.BindingTokenTTLMinutes < 1 || cfg.BindingTokenTTLMinutes > 1440 {
+		return errors.New("Telegram 绑定凭证有效期必须在 1 到 1440 分钟之间")
+	}
 	values := map[string]string{
 		telegramEnabledKey:             strconv.FormatBool(cfg.Enabled),
 		telegramBotAPIBaseURLKey:       strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/"),
 		telegramBotPollIntervalSeconds: strconv.Itoa(max(cfg.PollIntervalSeconds, 1)),
+		telegramMembershipCheckKey:     strconv.FormatBool(cfg.MembershipCheckEnabled),
+		telegramRequiredGroupChatIDKey: strings.TrimSpace(cfg.RequiredGroupChatID),
+		telegramGroupJoinURLKey:        strings.TrimSpace(cfg.GroupJoinURL),
+		telegramBindingTokenTTLKey:     strconv.Itoa(cfg.BindingTokenTTLMinutes),
 	}
 	if values[telegramBotAPIBaseURLKey] == "" {
 		values[telegramBotAPIBaseURLKey] = "https://api.telegram.org"

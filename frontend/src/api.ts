@@ -155,6 +155,10 @@ export interface TelegramSettings {
   botTokenSet: boolean;
   apiBaseUrl: string;
   pollIntervalSeconds: number;
+  membershipCheckEnabled: boolean;
+  requiredGroupChatId: string;
+  groupJoinUrl: string;
+  bindingTokenTtlMinutes: number;
   botUsername?: string;
   connected: boolean;
 }
@@ -293,6 +297,7 @@ export interface SocialBindingPayload {
   platform: string;
   userId: string;
   inviteCode?: string;
+  bindingToken?: string;
 }
 
 export interface SocialBindingResult {

@@ -63,6 +63,10 @@ export const emptyTelegramSettings: TelegramSettings = {
   botTokenSet: false,
   apiBaseUrl: 'https://api.telegram.org',
   pollIntervalSeconds: 2,
+  membershipCheckEnabled: false,
+  requiredGroupChatId: '',
+  groupJoinUrl: '',
+  bindingTokenTtlMinutes: 10,
   botUsername: '',
   connected: false
 };

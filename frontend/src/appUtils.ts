@@ -84,7 +84,13 @@ export function getPendingSocialBindingFromURL(): SocialBindingPayload | null {
     return null;
   }
   const inviteCode = params.get('invitecode')?.trim().toUpperCase() ?? '';
-  return { platform, userId, ...(inviteCode ? { inviteCode } : {}) };
+  const bindingToken = params.get('bindingtoken')?.trim() ?? '';
+  return {
+    platform,
+    userId,
+    ...(inviteCode ? { inviteCode } : {}),
+    ...(bindingToken ? { bindingToken } : {})
+  };
 }
 
 export function getInviteCodeFromURL() {
@@ -217,23 +223,40 @@ export function toTelegramDraft(settings: TelegramSettings): TelegramSettings {
     ...settings,
     botToken: '',
     apiBaseUrl: settings.apiBaseUrl || 'https://api.telegram.org',
-    pollIntervalSeconds: settings.pollIntervalSeconds || 2
+    pollIntervalSeconds: settings.pollIntervalSeconds || 2,
+    membershipCheckEnabled: settings.membershipCheckEnabled ?? false,
+    requiredGroupChatId: settings.requiredGroupChatId ?? '',
+    groupJoinUrl: settings.groupJoinUrl ?? '',
+    bindingTokenTtlMinutes: settings.bindingTokenTtlMinutes || 10
   };
 }
 
 export function parseTelegramDraft(draft: TelegramSettings): TelegramSettings | string {
   const pollIntervalSeconds = Number(draft.pollIntervalSeconds);
+  const bindingTokenTtlMinutes = Number(draft.bindingTokenTtlMinutes);
   if (!Number.isInteger(pollIntervalSeconds) || pollIntervalSeconds <= 0) {
     return 'Telegram 轮询间隔必须是大于 0 的整数';
   }
   if (draft.enabled && !draft.botTokenSet && !draft.botToken?.trim()) {
     return '启用 Telegram Bot 前请填写 Bot Token';
   }
+  if (!Number.isInteger(bindingTokenTtlMinutes) || bindingTokenTtlMinutes < 1 || bindingTokenTtlMinutes > 1440) {
+    return 'Telegram 绑定凭证有效期必须是 1 到 1440 之间的整数';
+  }
+  if (draft.membershipCheckEnabled && !draft.requiredGroupChatId.trim()) {
+    return '启用 Telegram 入群校验前请填写目标群 Chat ID';
+  }
+  if (draft.membershipCheckEnabled && !/^https?:\/\//i.test(draft.groupJoinUrl.trim())) {
+    return '启用 Telegram 入群校验前请填写有效的加群链接';
+  }
   return {
     ...draft,
     botToken: draft.botToken?.trim() ?? '',
     apiBaseUrl: draft.apiBaseUrl.trim().replace(/\/+$/, '') || 'https://api.telegram.org',
-    pollIntervalSeconds
+    pollIntervalSeconds,
+    requiredGroupChatId: draft.requiredGroupChatId.trim(),
+    groupJoinUrl: draft.groupJoinUrl.trim(),
+    bindingTokenTtlMinutes
   };
 }
 

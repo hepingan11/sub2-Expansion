@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +54,18 @@ type telegramMe struct {
 	Username string `json:"username"`
 }
 
+type telegramChatMember struct {
+	Status   string `json:"status"`
+	IsMember bool   `json:"is_member"`
+}
+
+type telegramBindingTokenClaims struct {
+	Platform   string `json:"platform"`
+	UserID     string `json:"userId"`
+	InviteCode string `json:"inviteCode,omitempty"`
+	ExpiresAt  int64  `json:"expiresAt"`
+}
+
 func (app *App) connectTelegramBot(c *gin.Context) {
 	cfg, err := app.effectiveTelegramConfig()
 	if err != nil {
@@ -66,6 +80,18 @@ func (app *App) connectTelegramBot(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadGateway, APIError{Message: "连接 Telegram 失败：" + err.Error()})
 		return
+	}
+	if cfg.MembershipCheckEnabled {
+		member, err := app.telegramGetChatMember(c.Request.Context(), cfg, me.ID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, APIError{Message: "校验 Telegram 目标群失败：" + err.Error()})
+			return
+		}
+		status := strings.ToLower(strings.TrimSpace(member.Status))
+		if status != "creator" && status != "administrator" {
+			badRequest(c, "Telegram Bot 必须是目标群管理员")
+			return
+		}
 	}
 	if err := app.telegramDeleteWebhook(c.Request.Context(), cfg, true); err != nil {
 		c.JSON(http.StatusBadGateway, APIError{Message: "清理 Telegram Webhook 失败：" + err.Error()})
@@ -196,7 +222,7 @@ func (app *App) handleTelegramUpdate(ctx context.Context, cfg TelegramConfig, up
 	if command == "" {
 		return
 	}
-	reply, err := app.handleTelegramCommand(ctx, message.From.ID, botUsername, command, arg)
+	reply, err := app.handleTelegramCommand(ctx, cfg, message.From.ID, botUsername, command, arg)
 	if err != nil {
 		log.Printf("Telegram command failed: user_id=%d command=%s error=%v", message.From.ID, command, err)
 		reply = telegramErrorMessage(err)
@@ -230,7 +256,7 @@ func parseTelegramCommand(text string) (string, string) {
 	return command, arg
 }
 
-func (app *App) handleTelegramCommand(ctx context.Context, telegramUserID int64, botUsername, command, arg string) (string, error) {
+func (app *App) handleTelegramCommand(ctx context.Context, cfg TelegramConfig, telegramUserID int64, botUsername, command, arg string) (string, error) {
 	externalUserID := strconv.FormatInt(telegramUserID, 10)
 	switch command {
 	case "start":
@@ -245,7 +271,16 @@ func (app *App) handleTelegramCommand(ctx context.Context, telegramUserID int64,
 			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return "", err
 			}
-			return "请先登录并绑定账号，绑定完成后会自动使用邀请码：\n" + app.telegramBindingURL(externalUserID, code), nil
+			if prompt, allowed, err := app.telegramMembershipGate(ctx, cfg, telegramUserID, botUsername, code); err != nil {
+				return "", err
+			} else if !allowed {
+				return prompt, nil
+			}
+			bindingURL, err := app.telegramBindingURL(cfg, externalUserID, code)
+			if err != nil {
+				return "", err
+			}
+			return "请先登录并绑定账号，绑定完成后会自动使用邀请码：\n" + bindingURL, nil
 		}
 		return app.telegramStartMessage(telegramUserID)
 	case "bind":
@@ -257,7 +292,16 @@ func (app *App) handleTelegramCommand(ctx context.Context, telegramUserID int64,
 			}
 			inviteCode = code
 		}
-		return "请打开下面的链接登录并绑定 Telegram：\n" + app.telegramBindingURL(externalUserID, inviteCode), nil
+		if prompt, allowed, err := app.telegramMembershipGate(ctx, cfg, telegramUserID, botUsername, inviteCode); err != nil {
+			return "", err
+		} else if !allowed {
+			return prompt, nil
+		}
+		bindingURL, err := app.telegramBindingURL(cfg, externalUserID, inviteCode)
+		if err != nil {
+			return "", err
+		}
+		return "请打开下面的链接登录并绑定 Telegram：\n" + bindingURL, nil
 	case "checkin", "qiandao", "签到":
 		return app.telegramCheckIn(ctx, telegramUserID)
 	case "invite":
@@ -346,12 +390,96 @@ func (app *App) telegramBinding(telegramUserID int64) (SocialAccountBinding, err
 	return binding, err
 }
 
-func (app *App) telegramBindingURL(externalUserID, inviteCode string) string {
+func (app *App) telegramBindingURL(cfg TelegramConfig, externalUserID, inviteCode string) (string, error) {
 	baseURL, err := app.frontendPublicURL()
 	if err != nil {
-		baseURL = ""
+		return "", err
 	}
-	return buildSocialBindingURL(baseURL, telegramPlatform, externalUserID, inviteCode)
+	token, err := app.issueTelegramBindingToken(externalUserID, inviteCode, cfg.BindingTokenTTLMinutes)
+	if err != nil {
+		return "", err
+	}
+	return buildSocialBindingURLWithToken(baseURL, telegramPlatform, externalUserID, inviteCode, token), nil
+}
+
+func (app *App) telegramMembershipGate(ctx context.Context, cfg TelegramConfig, telegramUserID int64, botUsername, inviteCode string) (string, bool, error) {
+	if !cfg.MembershipCheckEnabled {
+		return "", true, nil
+	}
+	member, err := app.telegramGetChatMember(ctx, cfg, telegramUserID)
+	if err != nil {
+		return "", false, fmt.Errorf("check Telegram group membership: %w", err)
+	}
+	if telegramMemberIsActive(member) {
+		return "", true, nil
+	}
+	lines := []string{"绑定前请先加入指定 Telegram 群组：", cfg.GroupJoinURL}
+	if inviteCode != "" && strings.TrimSpace(botUsername) != "" {
+		lines = append(lines, "", "加入后重新打开下面的邀请链接完成校验：", fmt.Sprintf("https://t.me/%s?start=%s", botUsername, inviteCode))
+	} else {
+		lines = append(lines, "", "加入后重新发送 /bind 完成校验。")
+	}
+	return strings.Join(lines, "\n"), false, nil
+}
+
+func (app *App) telegramGetChatMember(ctx context.Context, cfg TelegramConfig, telegramUserID int64) (telegramChatMember, error) {
+	if strings.TrimSpace(cfg.RequiredGroupChatID) == "" {
+		return telegramChatMember{}, errors.New("required Telegram group Chat ID is not configured")
+	}
+	var member telegramChatMember
+	err := app.telegramJSON(ctx, cfg, "getChatMember", map[string]any{
+		"chat_id": cfg.RequiredGroupChatID,
+		"user_id": telegramUserID,
+	}, &member)
+	return member, err
+}
+
+func telegramMemberIsActive(member telegramChatMember) bool {
+	switch strings.ToLower(strings.TrimSpace(member.Status)) {
+	case "creator", "administrator", "member":
+		return true
+	case "restricted":
+		return member.IsMember
+	default:
+		return false
+	}
+}
+
+func (app *App) issueTelegramBindingToken(externalUserID, inviteCode string, ttlMinutes int) (string, error) {
+	claims := telegramBindingTokenClaims{
+		Platform:   telegramPlatform,
+		UserID:     strings.TrimSpace(externalUserID),
+		InviteCode: strings.ToUpper(strings.TrimSpace(inviteCode)),
+		ExpiresAt:  time.Now().Add(time.Duration(ttlMinutes) * time.Minute).Unix(),
+	}
+	raw, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	payload := base64.RawURLEncoding.EncodeToString(raw)
+	return payload + "." + app.sign("telegram-binding."+payload), nil
+}
+
+func (app *App) verifyTelegramBindingToken(token, externalUserID, inviteCode string) error {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 || !hmac.Equal([]byte(app.sign("telegram-binding."+parts[0])), []byte(parts[1])) {
+		return errors.New("Telegram 绑定凭证无效，请从 Bot 重新获取绑定链接")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return errors.New("Telegram 绑定凭证无效，请从 Bot 重新获取绑定链接")
+	}
+	var claims telegramBindingTokenClaims
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return errors.New("Telegram 绑定凭证无效，请从 Bot 重新获取绑定链接")
+	}
+	if claims.ExpiresAt <= time.Now().Unix() {
+		return errors.New("Telegram 绑定凭证已过期，请从 Bot 重新获取绑定链接")
+	}
+	if claims.Platform != telegramPlatform || claims.UserID != strings.TrimSpace(externalUserID) || claims.InviteCode != strings.ToUpper(strings.TrimSpace(inviteCode)) {
+		return errors.New("Telegram 绑定参数与凭证不匹配，请从 Bot 重新获取绑定链接")
+	}
+	return nil
 }
 
 func telegramHelpMessage() string {

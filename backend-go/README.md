@@ -76,7 +76,8 @@ Content-Type: application/json
 1. 在 BotFather 创建 Bot，拿到 Bot Token。
 2. 进入后台 `系统设置 -> 公开访问地址`，填写用户能访问的前端地址，Bot 会用它生成网页登录绑定链接。
 3. 进入后台 `系统设置 -> Telegram Bot`，填写 Bot Token、API 地址和轮询间隔。
-4. 点击保存，再点“连接测试”。连接成功后后端会调用 Telegram `getMe`、清理旧 webhook，并立即启动或重启长轮询。
+4. 如需限制绑定用户必须入群，将 Bot 设为目标群管理员，再启用“绑定前检查指定群成员身份”，填写目标群 Chat ID、加群链接和绑定凭证有效期。
+5. 点击保存，再点“连接测试”。连接成功后后端会调用 Telegram `getMe`；启用入群校验时还会确认目标群可访问且 Bot 是管理员，然后清理旧 webhook 并立即启动或重启长轮询。
 
 也可以用 `FRONTEND_PUBLIC_URL`、`TELEGRAM_BOT_*` 环境变量作为初始默认值；后台保存后的配置会优先生效。
 
@@ -93,7 +94,7 @@ Authorization: Bearer <admin-token>
 - `/me` 查看绑定状态
 - `/help` 查看帮助
 
-邀请链接使用 `/start <邀请码>`。新人打开链接后，Bot 会返回带 `platform=telegram`、`userid=<telegram user id>`、`invitecode=<邀请码>` 的网页登录绑定链接；登录后会写入共享绑定表并按 Telegram 平台配置发放邀请奖励。
+邀请链接使用 `/start <邀请码>`。启用入群校验后，Bot 会先通过 `getChatMember` 检查新人是否已加入目标群；未入群时返回加群地址，已入群时返回带 `platform=telegram`、`userid=<telegram user id>`、`invitecode=<邀请码>` 和短期签名凭证的网页登录绑定链接。用户登录后，后端会验证签名凭证、再次检查群成员状态、写入共享绑定表，并按 Telegram 平台配置发放邀请奖励。
 
 ## 启动
 

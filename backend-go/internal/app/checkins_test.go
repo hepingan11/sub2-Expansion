@@ -18,6 +18,14 @@ func TestBuildSocialBindingURLWithoutBase(t *testing.T) {
 	}
 }
 
+func TestBuildSocialBindingURLWithToken(t *testing.T) {
+	got := buildSocialBindingURLWithToken("https://example.com", "telegram", "123", "ABCDEFGH", "signed.token")
+	want := "https://example.com/?bindingtoken=signed.token&invitecode=ABCDEFGH&platform=telegram&userid=123"
+	if got != want {
+		t.Fatalf("buildSocialBindingURLWithToken() = %q, want %q", got, want)
+	}
+}
+
 func TestFirstHeaderValue(t *testing.T) {
 	got := firstHeaderValue("https, http")
 	want := "https"

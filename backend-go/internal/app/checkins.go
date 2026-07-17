@@ -94,11 +94,18 @@ func (app *App) socialBindingURL(c *gin.Context, platform, externalUserID, invit
 }
 
 func buildSocialBindingURL(baseURL, platform, externalUserID, inviteCode string) string {
+	return buildSocialBindingURLWithToken(baseURL, platform, externalUserID, inviteCode, "")
+}
+
+func buildSocialBindingURLWithToken(baseURL, platform, externalUserID, inviteCode, bindingToken string) string {
 	values := url.Values{}
 	values.Set("platform", platform)
 	values.Set("userid", externalUserID)
 	if inviteCode != "" {
 		values.Set("invitecode", inviteCode)
+	}
+	if bindingToken != "" {
+		values.Set("bindingtoken", bindingToken)
 	}
 	prefix := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if prefix == "" {

@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -10,9 +11,10 @@ import (
 )
 
 type SocialBindingRequest struct {
-	Platform   string `json:"platform"`
-	UserID     string `json:"userId"`
-	InviteCode string `json:"inviteCode"`
+	Platform     string `json:"platform"`
+	UserID       string `json:"userId"`
+	InviteCode   string `json:"inviteCode"`
+	BindingToken string `json:"bindingToken"`
 }
 
 type SocialBindingResponse struct {
@@ -40,6 +42,33 @@ func (app *App) bindSocialAccount(c *gin.Context) {
 	if err != nil {
 		badRequest(c, err.Error())
 		return
+	}
+	if platform == telegramPlatform {
+		cfg, err := app.effectiveTelegramConfig()
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if cfg.MembershipCheckEnabled {
+			if err := app.verifyTelegramBindingToken(strings.TrimSpace(req.BindingToken), externalUserID, req.InviteCode); err != nil {
+				conflict(c, err.Error())
+				return
+			}
+			telegramUserID, err := strconv.ParseInt(externalUserID, 10, 64)
+			if err != nil {
+				badRequest(c, "Telegram userId 格式无效")
+				return
+			}
+			member, err := app.telegramGetChatMember(c.Request.Context(), cfg, telegramUserID)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, APIError{Message: "Telegram 群成员校验失败：" + err.Error()})
+				return
+			}
+			if !telegramMemberIsActive(member) {
+				conflict(c, "请先加入指定 Telegram 群组，再从 Bot 重新获取绑定链接")
+				return
+			}
+		}
 	}
 
 	resp, err := app.bindSocialAccountForUser(user.ID, platform, externalUserID)

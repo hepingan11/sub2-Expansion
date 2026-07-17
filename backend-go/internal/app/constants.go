@@ -49,6 +49,10 @@ const (
 	telegramBotTokenKey            = "telegram.bot_token"
 	telegramBotAPIBaseURLKey       = "telegram.api_base_url"
 	telegramBotPollIntervalSeconds = "telegram.poll_interval_seconds"
+	telegramMembershipCheckKey     = "telegram.membership_check_enabled"
+	telegramRequiredGroupChatIDKey = "telegram.required_group_chat_id"
+	telegramGroupJoinURLKey        = "telegram.group_join_url"
+	telegramBindingTokenTTLKey     = "telegram.binding_token_ttl_minutes"
 )
 
 const sub2APITokenRefreshBefore = 10 * time.Minute
