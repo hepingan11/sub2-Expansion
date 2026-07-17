@@ -98,6 +98,12 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if req.TokenUsageRankingEnabled != nil {
+		if err := app.saveSetting(tokenUsageRankingKey, strconv.FormatBool(*req.TokenUsageRankingEnabled)); err != nil {
+			serverError(c, err)
+			return
+		}
+	}
 	if err := app.saveSetting(invitationAfterTimeKey, invitation.AfterTime); err != nil {
 		serverError(c, err)
 		return
@@ -177,6 +183,10 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 	if err != nil {
 		return CheckInSettingsResponse{}, err
 	}
+	tokenUsageRankingEnabled, err := app.tokenUsageRankingEnabled()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	invitation, err := app.loadInvitationConfig()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
@@ -204,20 +214,21 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		return CheckInSettingsResponse{}, err
 	}
 	return CheckInSettingsResponse{
-		DailyMaxUsers:       dailyMaxUsers,
-		DailyLimitMode:      dailyLimitMode,
-		DirectDailyMaxUsers: directDailyMaxUsers,
-		SocialDailyMaxUsers: socialDailyMaxUsers,
-		PrizeTiers:          directTiers,
-		DirectPrizeTiers:    directTiers,
-		SocialPrizeTiers:    socialTiers,
-		GroupLink:           groupLink,
-		FrontendPublicURL:   frontendPublicURL,
-		Admin:               admin,
-		Sub2API:             sub2api,
-		Invitation:          invitation,
-		InvitationGuide:     invitationGuide,
-		Telegram:            telegram,
+		DailyMaxUsers:            dailyMaxUsers,
+		DailyLimitMode:           dailyLimitMode,
+		DirectDailyMaxUsers:      directDailyMaxUsers,
+		SocialDailyMaxUsers:      socialDailyMaxUsers,
+		PrizeTiers:               directTiers,
+		DirectPrizeTiers:         directTiers,
+		SocialPrizeTiers:         socialTiers,
+		GroupLink:                groupLink,
+		FrontendPublicURL:        frontendPublicURL,
+		TokenUsageRankingEnabled: tokenUsageRankingEnabled,
+		Admin:                    admin,
+		Sub2API:                  sub2api,
+		Invitation:               invitation,
+		InvitationGuide:          invitationGuide,
+		Telegram:                 telegram,
 	}, nil
 }
 

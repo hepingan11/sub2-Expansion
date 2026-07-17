@@ -335,6 +335,8 @@ export function settingsChanged(
   groupLinkDraft: string,
   frontendPublicUrl: string,
   frontendPublicUrlDraft: string,
+  tokenUsageRankingEnabled: boolean,
+  tokenUsageRankingEnabledDraft: boolean,
   admin: AdminSettings,
   adminDraft: AdminSettings,
   sub2api: Sub2APISettings,
@@ -368,6 +370,9 @@ export function settingsChanged(
     return true;
   }
   if (frontendPublicUrlDraft !== frontendPublicUrl) {
+    return true;
+  }
+  if (tokenUsageRankingEnabledDraft !== tokenUsageRankingEnabled) {
     return true;
   }
   if (adminDraft.username !== admin.username) {

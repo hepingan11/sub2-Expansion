@@ -31,6 +31,7 @@ const (
 	invitationQQGroupKey   = "invitation.guide.qq_group"
 	invitationQQBotKey     = "invitation.guide.qq_bot_mention"
 	frontendPublicURLKey   = "app.frontend_public_url"
+	tokenUsageRankingKey   = "user.token_usage_ranking_enabled"
 	platformSettingsPrefix = "platform."
 
 	adminUsernameKey     = "admin.username"

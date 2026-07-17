@@ -96,6 +96,7 @@ export interface CheckInSettings {
   socialPrizeTiers: PrizeTierSetting[];
   groupLink: string;
   frontendPublicUrl: string;
+  tokenUsageRankingEnabled: boolean;
   admin: AdminSettings;
   sub2api: Sub2APISettings;
   invitation: InvitationSettings;
@@ -199,6 +200,22 @@ export interface Sub2APIUserProfile {
   run_mode?: string;
   socialBindings?: UserSocialBinding[];
   [key: string]: unknown;
+}
+
+export interface UserTokenUsageRankingItem {
+  rank: number;
+  displayName: string;
+  tokens: number;
+  requests: number;
+  isCurrentUser: boolean;
+}
+
+export interface UserTokenUsageRanking {
+  enabled: boolean;
+  date: string;
+  timezone: string;
+  updatedAt: string;
+  ranking: UserTokenUsageRankingItem[];
 }
 
 export interface UserLoginResponse {
@@ -525,6 +542,10 @@ export async function fetchCurrentUser() {
   return userRequest<Sub2APIUserProfile>('/api/user/me');
 }
 
+export async function fetchUserTokenUsageRanking() {
+  return userRequest<UserTokenUsageRanking>('/api/user/token-usage-ranking');
+}
+
 export async function fetchUserRechargeRewards() {
   return userRequest<UserRechargeRewards>('/api/user/recharge-rewards');
 }
@@ -573,6 +594,7 @@ export async function updateCheckInSettings(
   socialPrizeTiers: PrizeTierSetting[],
   groupLink: string,
   frontendPublicUrl: string,
+  tokenUsageRankingEnabled: boolean,
   admin: AdminSettings,
   sub2api: Sub2APISettings,
   invitation: InvitationSettings,
@@ -581,7 +603,7 @@ export async function updateCheckInSettings(
 ) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, admin, sub2api, invitation, invitationGuide, telegram })
+    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, tokenUsageRankingEnabled, admin, sub2api, invitation, invitationGuide, telegram })
   });
 }
 

@@ -103,37 +103,39 @@ type PrizeTier struct {
 }
 
 type CheckInSettingsResponse struct {
-	DailyMaxUsers       int                   `json:"dailyMaxUsers"`
-	DailyLimitMode      string                `json:"dailyLimitMode"`
-	DirectDailyMaxUsers int                   `json:"directDailyMaxUsers"`
-	SocialDailyMaxUsers int                   `json:"socialDailyMaxUsers"`
-	PrizeTiers          []PrizeTier           `json:"prizeTiers"`
-	DirectPrizeTiers    []PrizeTier           `json:"directPrizeTiers"`
-	SocialPrizeTiers    []PrizeTier           `json:"socialPrizeTiers"`
-	GroupLink           string                `json:"groupLink"`
-	FrontendPublicURL   string                `json:"frontendPublicUrl"`
-	Admin               AdminConfig           `json:"admin"`
-	Sub2API             Sub2APIConfig         `json:"sub2api"`
-	Invitation          InvitationConfig      `json:"invitation"`
-	InvitationGuide     InvitationGuideConfig `json:"invitationGuide"`
-	Telegram            TelegramConfig        `json:"telegram"`
+	DailyMaxUsers            int                   `json:"dailyMaxUsers"`
+	DailyLimitMode           string                `json:"dailyLimitMode"`
+	DirectDailyMaxUsers      int                   `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers      int                   `json:"socialDailyMaxUsers"`
+	PrizeTiers               []PrizeTier           `json:"prizeTiers"`
+	DirectPrizeTiers         []PrizeTier           `json:"directPrizeTiers"`
+	SocialPrizeTiers         []PrizeTier           `json:"socialPrizeTiers"`
+	GroupLink                string                `json:"groupLink"`
+	FrontendPublicURL        string                `json:"frontendPublicUrl"`
+	TokenUsageRankingEnabled bool                  `json:"tokenUsageRankingEnabled"`
+	Admin                    AdminConfig           `json:"admin"`
+	Sub2API                  Sub2APIConfig         `json:"sub2api"`
+	Invitation               InvitationConfig      `json:"invitation"`
+	InvitationGuide          InvitationGuideConfig `json:"invitationGuide"`
+	Telegram                 TelegramConfig        `json:"telegram"`
 }
 
 type UpdateCheckInSettingsRequest struct {
-	DailyMaxUsers       int                   `json:"dailyMaxUsers"`
-	DailyLimitMode      string                `json:"dailyLimitMode"`
-	DirectDailyMaxUsers int                   `json:"directDailyMaxUsers"`
-	SocialDailyMaxUsers int                   `json:"socialDailyMaxUsers"`
-	PrizeTiers          []PrizeTier           `json:"prizeTiers"`
-	DirectPrizeTiers    []PrizeTier           `json:"directPrizeTiers"`
-	SocialPrizeTiers    []PrizeTier           `json:"socialPrizeTiers"`
-	GroupLink           string                `json:"groupLink"`
-	FrontendPublicURL   string                `json:"frontendPublicUrl"`
-	Admin               AdminConfig           `json:"admin"`
-	Sub2API             Sub2APIConfig         `json:"sub2api"`
-	Invitation          InvitationConfig      `json:"invitation"`
-	InvitationGuide     InvitationGuideConfig `json:"invitationGuide"`
-	Telegram            TelegramConfig        `json:"telegram"`
+	DailyMaxUsers            int                   `json:"dailyMaxUsers"`
+	DailyLimitMode           string                `json:"dailyLimitMode"`
+	DirectDailyMaxUsers      int                   `json:"directDailyMaxUsers"`
+	SocialDailyMaxUsers      int                   `json:"socialDailyMaxUsers"`
+	PrizeTiers               []PrizeTier           `json:"prizeTiers"`
+	DirectPrizeTiers         []PrizeTier           `json:"directPrizeTiers"`
+	SocialPrizeTiers         []PrizeTier           `json:"socialPrizeTiers"`
+	GroupLink                string                `json:"groupLink"`
+	FrontendPublicURL        string                `json:"frontendPublicUrl"`
+	TokenUsageRankingEnabled *bool                 `json:"tokenUsageRankingEnabled"`
+	Admin                    AdminConfig           `json:"admin"`
+	Sub2API                  Sub2APIConfig         `json:"sub2api"`
+	Invitation               InvitationConfig      `json:"invitation"`
+	InvitationGuide          InvitationGuideConfig `json:"invitationGuide"`
+	Telegram                 TelegramConfig        `json:"telegram"`
 }
 
 type InvitationConfig struct {

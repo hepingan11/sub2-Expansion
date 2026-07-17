@@ -45,4 +45,5 @@ type App struct {
 	sub2APIGroupRateMonitorMu sync.Mutex
 	telegramBotMu             sync.Mutex
 	telegramBotCancel         context.CancelFunc
+	telegramBotDone           chan struct{}
 }

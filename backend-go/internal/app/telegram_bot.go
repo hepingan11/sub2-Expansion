@@ -125,15 +125,21 @@ func (app *App) startTelegramBot(ctx context.Context) {
 	}
 	botCtx, cancel := context.WithCancel(ctx)
 	app.telegramBotCancel = cancel
-	go app.runTelegramBot(botCtx, cfg)
+	done := make(chan struct{})
+	app.telegramBotDone = done
+	go app.runTelegramBot(botCtx, cfg, done)
 }
 
 func (app *App) stopTelegramBot() {
 	app.telegramBotMu.Lock()
-	defer app.telegramBotMu.Unlock()
-	if app.telegramBotCancel != nil {
-		app.telegramBotCancel()
-		app.telegramBotCancel = nil
+	cancel := app.telegramBotCancel
+	done := app.telegramBotDone
+	app.telegramBotMu.Unlock()
+	if cancel != nil {
+		cancel()
+		if done != nil {
+			<-done
+		}
 	}
 }
 
@@ -142,11 +148,13 @@ func (app *App) restartTelegramBot(ctx context.Context) {
 	app.startTelegramBot(ctx)
 }
 
-func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig) {
+func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig, done chan struct{}) {
 	defer func() {
+		close(done)
 		app.telegramBotMu.Lock()
-		if app.telegramBotCancel != nil && ctx.Err() != nil {
+		if app.telegramBotDone == done {
 			app.telegramBotCancel = nil
+			app.telegramBotDone = nil
 		}
 		app.telegramBotMu.Unlock()
 	}()
@@ -178,6 +186,10 @@ func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig) {
 		updates, err := app.telegramGetUpdates(ctx, cfg, offset)
 		if err != nil {
 			log.Printf("Telegram getUpdates failed: %v", err)
+			if strings.Contains(strings.ToLower(err.Error()), "conflict") {
+				log.Printf("Telegram bot stopped because another instance owns this bot token")
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return

@@ -391,6 +391,7 @@ textarea {
   font-size: clamp(30px, 5vw, 54px);
   letter-spacing: 0;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 
 .user-hero p {
@@ -407,6 +408,159 @@ textarea {
 
 .metric-ink strong {
   color: var(--ink);
+}
+
+.user-token-ranking-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.user-token-ranking-head,
+.user-token-ranking-head h2,
+.user-token-ranking-state {
+  display: flex;
+  align-items: center;
+}
+
+.user-token-ranking-head {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.user-token-ranking-head h2 {
+  gap: 8px;
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.user-token-ranking-head h2 svg {
+  color: var(--gold);
+}
+
+.user-token-ranking-date {
+  min-width: 122px;
+  text-align: right;
+}
+
+.user-token-ranking-date span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.user-token-ranking-date strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.user-token-ranking-table {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.user-token-ranking-row {
+  display: grid;
+  grid-template-columns: 72px minmax(160px, 1fr) minmax(140px, 0.8fr) minmax(100px, 0.55fr);
+  align-items: center;
+  min-height: 50px;
+  padding: 0 14px;
+  border-top: 1px solid var(--line);
+}
+
+.user-token-ranking-row:first-child {
+  border-top: 0;
+}
+
+.user-token-ranking-row.is-header {
+  min-height: 38px;
+  color: var(--muted);
+  background: #f2eee5;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.user-token-ranking-row.rank-1 .ranking-position,
+.user-token-ranking-row.rank-2 .ranking-position,
+.user-token-ranking-row.rank-3 .ranking-position {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.user-token-ranking-row.rank-1 .ranking-position {
+  color: #7a4b0a;
+  background: #f7df9b;
+}
+
+.user-token-ranking-row.rank-2 .ranking-position {
+  color: #3f4a54;
+  background: #dce2e6;
+}
+
+.user-token-ranking-row.rank-3 .ranking-position {
+  color: #704326;
+  background: #e9c3a8;
+}
+
+.user-token-ranking-row.is-current {
+  background: rgba(22, 115, 74, 0.08);
+  box-shadow: inset 3px 0 var(--green);
+}
+
+.ranking-user {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.ranking-user em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: 4px;
+  color: var(--green);
+  background: rgba(22, 115, 74, 0.12);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.ranking-tokens {
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.ranking-requests {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.user-token-ranking-state {
+  justify-content: center;
+  gap: 10px;
+  min-height: 96px;
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.user-token-ranking-state.is-error {
+  color: var(--red);
 }
 
 .user-checkin-panel {
@@ -2741,6 +2895,28 @@ tr:last-child td {
 
   .user-hero {
     padding: 20px;
+  }
+
+  .user-token-ranking-panel {
+    padding: 14px;
+  }
+
+  .user-token-ranking-head {
+    align-items: flex-start;
+  }
+
+  .user-token-ranking-date {
+    min-width: 96px;
+  }
+
+  .user-token-ranking-row {
+    grid-template-columns: 44px minmax(100px, 1fr) minmax(96px, auto);
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .user-token-ranking-row > :nth-child(4) {
+    display: none;
   }
 
   .reward-progress-step,

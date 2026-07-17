@@ -33,6 +33,7 @@ func (app *App) router() *gin.Engine {
 	user.POST("/refresh", app.refreshUserToken)
 	protectedUser := router.Group("/api/user", app.userAuth)
 	protectedUser.GET("/me", app.getCurrentSub2APIUser)
+	protectedUser.GET("/token-usage-ranking", app.getUserTokenUsageRanking)
 	protectedUser.GET("/check-in", app.getUserCheckInStatus)
 	protectedUser.POST("/check-in", app.userCheckIn)
 	protectedUser.POST("/social-bindings", app.bindSocialAccount)

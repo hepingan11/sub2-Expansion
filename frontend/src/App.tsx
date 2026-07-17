@@ -16,11 +16,13 @@ import {
   MessageCircle,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Send,
   Settings2,
   ShieldCheck,
   Trash2,
+  Trophy,
   UserRound,
   UserPlus,
   X
@@ -59,6 +61,7 @@ import {
   fetchSub2APIGroupRateLogs,
   fetchSystemUpdateCheck,
   fetchUserCheckInStatus,
+  fetchUserTokenUsageRanking,
   fetchUserRechargeRewards,
   fetchUserInvitation,
   fetchStats,
@@ -96,6 +99,7 @@ import {
   refreshSub2APIGroupRates,
   runSystemUpdate,
   UserRechargeRewards,
+  UserTokenUsageRanking,
   userCheckIn,
   userLogin,
   userLogin2FA,
@@ -361,6 +365,10 @@ function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void;
   );
 }
 
+function formatTokenCount(value: number) {
+  return new Intl.NumberFormat('zh-CN').format(Math.max(0, Number(value) || 0));
+}
+
 function UserDashboard({ onLogout }: { onLogout: () => void }) {
   const [user, setUser] = useState<Sub2APIUserProfile | null>(null);
   const [rewards, setRewards] = useState<UserRechargeRewards | null>(null);
@@ -374,6 +382,9 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(() => consumeSocialBindingNotice());
   const [publicRateSeries, setPublicRateSeries] = useState<Sub2APIGroupRateSeries[]>([]);
+  const [tokenRanking, setTokenRanking] = useState<UserTokenUsageRanking | null>(null);
+  const [rankingLoading, setRankingLoading] = useState(true);
+  const [rankingError, setRankingError] = useState('');
 
   async function loadUser() {
     setLoading(true);
@@ -396,8 +407,22 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function loadTokenRanking() {
+    setRankingLoading(true);
+    setRankingError('');
+    try {
+      const nextRanking = await fetchUserTokenUsageRanking();
+      setTokenRanking(nextRanking);
+    } catch (err) {
+      setRankingError(err instanceof Error ? err.message : '加载排行榜失败');
+    } finally {
+      setRankingLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadUser();
+    loadTokenRanking();
     fetchPublicSub2APIGroupRateSeries()
       .then((series) => setPublicRateSeries(Array.isArray(series) ? series : []))
       .catch(() => setPublicRateSeries([]));
@@ -542,9 +567,9 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           <h2>{loading ? '正在加载...' : displayName}</h2>
           <p>{user?.email || '登录后可查看你的账户余额、并发额度和账号状态。'}</p>
         </div>
-        <button className="ghost-btn" type="button" onClick={loadUser} disabled={loading}>
-          <CheckCircle2 size={17} />
-          {loading ? '刷新中...' : '刷新'}
+        <button className="ghost-btn" type="button" onClick={() => { loadUser(); loadTokenRanking(); }} disabled={loading || rankingLoading}>
+          <RefreshCw size={17} />
+          {loading || rankingLoading ? '刷新中...' : '刷新'}
         </button>
       </section>
 
@@ -566,6 +591,55 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           <strong>{totalRecharged}</strong>
         </article>
       </section>
+
+      {(rankingLoading || Boolean(rankingError) || tokenRanking?.enabled !== false) && <section className="user-token-ranking-panel">
+        <div className="user-token-ranking-head">
+          <div>
+            <span className="eyebrow">Daily Token Ranking</span>
+            <h2><Trophy size={21} /> 今日 Token 使用榜</h2>
+          </div>
+          <div className="user-token-ranking-date">
+            <span>统计日期</span>
+            <strong>{tokenRanking?.date || formatToday()}</strong>
+          </div>
+        </div>
+
+        <div className="user-token-ranking-table" role="table" aria-label="今日 Token 使用排行榜">
+          <div className="user-token-ranking-row is-header" role="row">
+            <span role="columnheader">名次</span>
+            <span role="columnheader">用户</span>
+            <span role="columnheader">Token</span>
+            <span role="columnheader">请求数</span>
+          </div>
+          {!rankingLoading && !rankingError && tokenRanking?.ranking.map((entry) => (
+            <div
+              className={`user-token-ranking-row rank-${entry.rank}${entry.isCurrentUser ? ' is-current' : ''}`}
+              role="row"
+              key={`${entry.rank}-${entry.displayName}`}
+            >
+              <strong className="ranking-position" role="cell">{entry.rank}</strong>
+              <span className="ranking-user" role="cell">
+                {entry.displayName}
+                {entry.isCurrentUser && <em>我</em>}
+              </span>
+              <strong className="ranking-tokens" role="cell">{formatTokenCount(entry.tokens)}</strong>
+              <span className="ranking-requests" role="cell">{formatTokenCount(entry.requests)}</span>
+            </div>
+          ))}
+          {rankingLoading && <div className="user-token-ranking-state">正在统计今日 Token 用量...</div>}
+          {!rankingLoading && rankingError && (
+            <div className="user-token-ranking-state is-error">
+              <span>{rankingError}</span>
+              <button className="icon-btn" type="button" title="重新加载排行榜" onClick={loadTokenRanking}>
+                <RefreshCw size={17} />
+              </button>
+            </div>
+          )}
+          {!rankingLoading && !rankingError && !tokenRanking?.ranking.length && (
+            <div className="user-token-ranking-state">今天还没有 Token 使用记录</div>
+          )}
+        </div>
+      </section>}
 
       <section className="user-checkin-panel">
         <div>
@@ -965,6 +1039,8 @@ function Dashboard({
   const [groupLinkDraft, setGroupLinkDraft] = useState('');
   const [frontendPublicUrl, setFrontendPublicUrl] = useState('');
   const [frontendPublicUrlDraft, setFrontendPublicUrlDraft] = useState('');
+  const [tokenUsageRankingEnabled, setTokenUsageRankingEnabled] = useState(true);
+  const [tokenUsageRankingEnabledDraft, setTokenUsageRankingEnabledDraft] = useState(true);
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(emptyAdminSettings);
   const [adminSettingsDraft, setAdminSettingsDraft] = useState<AdminSettings>(emptyAdminSettings);
   const [sub2api, setSub2api] = useState<Sub2APISettings>(emptySub2APISettings);
@@ -1045,6 +1121,9 @@ function Dashboard({
     setGroupLinkDraft(settingsData.groupLink ?? '');
     setFrontendPublicUrl(settingsData.frontendPublicUrl ?? '');
     setFrontendPublicUrlDraft(settingsData.frontendPublicUrl ?? '');
+    const nextTokenUsageRankingEnabled = settingsData.tokenUsageRankingEnabled !== false;
+    setTokenUsageRankingEnabled(nextTokenUsageRankingEnabled);
+    setTokenUsageRankingEnabledDraft(nextTokenUsageRankingEnabled);
     const nextAdmin = settingsData.admin ?? emptyAdminSettings;
     setAdminSettings(nextAdmin);
     setAdminSettingsDraft({ ...nextAdmin, password: '' });
@@ -1302,6 +1381,8 @@ function Dashboard({
     groupLinkDraft,
     frontendPublicUrl,
     frontendPublicUrlDraft,
+    tokenUsageRankingEnabled,
+    tokenUsageRankingEnabledDraft,
     adminSettings,
     adminSettingsDraft,
     sub2api,
@@ -1406,7 +1487,7 @@ function Dashboard({
         return;
       }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), parsedAdminSettings, parsedSub2API, parsedInvitation, parsedInvitationGuide, parsedTelegram);
+      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), tokenUsageRankingEnabledDraft, parsedAdminSettings, parsedSub2API, parsedInvitation, parsedInvitationGuide, parsedTelegram);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1428,6 +1509,9 @@ function Dashboard({
       setGroupLinkDraft(settings.groupLink ?? '');
       setFrontendPublicUrl(settings.frontendPublicUrl ?? '');
       setFrontendPublicUrlDraft(settings.frontendPublicUrl ?? '');
+      const savedTokenUsageRankingEnabled = settings.tokenUsageRankingEnabled !== false;
+      setTokenUsageRankingEnabled(savedTokenUsageRankingEnabled);
+      setTokenUsageRankingEnabledDraft(savedTokenUsageRankingEnabled);
       const savedAdmin = settings.admin ?? emptyAdminSettings;
       setAdminSettings(savedAdmin);
       setAdminSettingsDraft({ ...savedAdmin, password: '' });
@@ -2795,6 +2879,32 @@ function Dashboard({
             </label>
             <div className="system-update-note">
               <span>Telegram 和其它社交平台绑定链接会使用这个地址。留空时回退到环境变量 FRONTEND_PUBLIC_URL；仍为空时尝试使用当前请求来源。</span>
+            </div>
+          </div>
+
+          <div className="sub2api-editor standalone">
+            <div className="tier-editor-head">
+              <div className="settings-title">
+                <Trophy size={18} />
+                <span>用户 Token 排行榜</span>
+              </div>
+              <span className={`invitation-status ${tokenUsageRankingEnabledDraft ? 'is-active' : ''}`}>
+                {tokenUsageRankingEnabledDraft ? '已展示' : '已隐藏'}
+              </span>
+            </div>
+            <div className="telegram-control-line">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={tokenUsageRankingEnabledDraft}
+                  onChange={(event) => {
+                    setTokenUsageRankingEnabledDraft(event.target.checked);
+                    setSettingsSaved(false);
+                  }}
+                />
+                在用户页面展示每日 Token 使用排行榜
+              </label>
+              <span>关闭后，用户端排行榜接口不会再查询或返回 Sub2API 排行数据。</span>
             </div>
           </div>
 
