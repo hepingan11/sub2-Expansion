@@ -19,7 +19,7 @@ func TestNormalizeInvitationCode(t *testing.T) {
 }
 
 func TestNormalizeInvitationConfig(t *testing.T) {
-	input := InvitationConfig{AfterTime: "2026-07-13T08:00:00+08:00", Amount: MustAmount("5.126")}
+	input := InvitationConfig{Enabled: true, AfterTime: "2026-07-13T08:00:00+08:00", Amount: MustAmount("5.126")}
 	got, err := normalizeInvitationConfig(input)
 	if err != nil {
 		t.Fatalf("normalizeInvitationConfig() error = %v", err)
@@ -29,6 +29,20 @@ func TestNormalizeInvitationConfig(t *testing.T) {
 	}
 	if got.Amount.StringFixed(2) != "5.13" {
 		t.Fatalf("Amount = %s", got.Amount.StringFixed(2))
+	}
+	if !got.Enabled {
+		t.Fatal("Enabled = false, want true")
+	}
+}
+
+func TestInvitationConfigEnabledRequiresActivityToggleAndRewardRules(t *testing.T) {
+	config := InvitationConfig{Enabled: true, AfterTime: "2026-07-13T00:00:00Z", Amount: MustAmount("5.00")}
+	if !invitationConfigEnabled(config) {
+		t.Fatal("invitationConfigEnabled() = false, want true")
+	}
+	config.Enabled = false
+	if invitationConfigEnabled(config) {
+		t.Fatal("invitationConfigEnabled() = true for disabled activity")
 	}
 }
 

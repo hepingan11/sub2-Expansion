@@ -81,6 +81,7 @@ func (app *App) router() *gin.Engine {
 	protected.GET("/invitations", app.listAdminInvitations)
 	protected.GET("/invitation-stats", app.getAdminInvitationStats)
 	protected.GET("/system/update-check", app.getSystemUpdateCheck)
+	protected.GET("/system/update-status", app.getSystemUpdateStatus)
 	protected.POST("/system/update", app.runSystemUpdate)
 
 	return router

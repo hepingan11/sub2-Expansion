@@ -192,6 +192,15 @@ func (app *App) userCheckIn(c *gin.Context) {
 }
 
 func (app *App) respondCheckIn(c *gin.Context, userID string, autoRedeemUserID *int64, checkInMethod, platformType string) {
+	enabled, err := app.checkInEnabled()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if !enabled {
+		conflict(c, "签到活动尚未开启")
+		return
+	}
 	today := Today()
 	if response, found, err := app.todayCheckInResponse(userID, today); err != nil {
 		serverError(c, err)
@@ -255,8 +264,15 @@ func (app *App) todayCheckInResponse(userID string, today LocalDate) (CheckInRes
 }
 
 func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDate, autoRedeemUserID *int64, checkInMethod, platformType string) (CheckInResponse, error) {
+	enabled, err := app.checkInEnabled()
+	if err != nil {
+		return CheckInResponse{}, err
+	}
+	if !enabled {
+		return CheckInResponse{}, businessConflict("签到活动尚未开启")
+	}
 	var response CheckInResponse
-	err := app.db.Transaction(func(tx *gorm.DB) error {
+	err = app.db.Transaction(func(tx *gorm.DB) error {
 		if err := app.consumeDailyQuota(tx, today, checkInMethod, platformType); err != nil {
 			return err
 		}
@@ -314,6 +330,10 @@ func (app *App) createCheckIn(ctx context.Context, userID string, today LocalDat
 }
 
 func (app *App) attachPublicCheckInSettings(response *CheckInResponse) error {
+	enabled, err := app.checkInEnabled()
+	if err != nil {
+		return err
+	}
 	directTiers, err := app.getPrizeTiers(prizeTiersKey, defaultPrizeTiers)
 	if err != nil {
 		return err
@@ -331,6 +351,7 @@ func (app *App) attachPublicCheckInSettings(response *CheckInResponse) error {
 			socialTiers = platformConfig.PrizeTiers
 		}
 	}
+	response.Enabled = enabled
 	response.GroupLink = groupLink
 	response.SocialPrizeTiers = socialTiers
 	return nil

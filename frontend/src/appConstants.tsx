@@ -24,7 +24,6 @@ import {
 } from './api';
 
 export type DashboardSection = 'checkins' | 'invitations' | 'favorites' | 'recharge' | 'rates' | 'system';
-export type LoginMode = 'user' | 'admin';
 
 export const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };
 export const emptyCheckInStats: CheckInStats = { todayAmount: 0, todayUsers: 0, daily: [] };
@@ -73,6 +72,7 @@ export const emptyTelegramSettings: TelegramSettings = {
 };
 
 export const emptyInvitationSettings: InvitationSettings = {
+  enabled: true,
   afterTime: '',
   amount: 0
 };

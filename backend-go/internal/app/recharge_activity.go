@@ -261,6 +261,21 @@ func (app *App) listUserRechargeRewards(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
 		return
 	}
+	enabled, err := app.rechargeEnabled()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	total := Amount{decimal.NewFromFloat(user.TotalRecharged).Round(2)}
+	resp := UserRechargeRewardsResponse{
+		Enabled:        enabled,
+		TotalRecharged: total,
+		Activities:     make([]UserRechargeActivityResponse, 0),
+	}
+	if !enabled {
+		c.JSON(http.StatusOK, resp)
+		return
+	}
 	activities, err := app.loadActiveRechargeActivities()
 	if err != nil {
 		serverError(c, err)
@@ -271,8 +286,8 @@ func (app *App) listUserRechargeRewards(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
-	total := Amount{decimal.NewFromFloat(user.TotalRecharged).Round(2)}
-	resp := UserRechargeRewardsResponse{
+	resp = UserRechargeRewardsResponse{
+		Enabled:        true,
 		TotalRecharged: total,
 		Activities:     make([]UserRechargeActivityResponse, 0, len(activities)),
 	}
@@ -298,6 +313,15 @@ func (app *App) claimRechargeReward(c *gin.Context) {
 	user, ok := sub2APIUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
+		return
+	}
+	enabled, err := app.rechargeEnabled()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if !enabled {
+		conflict(c, "累计充值活动尚未开启")
 		return
 	}
 	activityID, ok := pathUint64(c, "activityId")

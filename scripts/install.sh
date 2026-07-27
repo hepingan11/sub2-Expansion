@@ -154,9 +154,11 @@ if [ ! -f .env ]; then
   SUB2API_TOKEN_REFRESH_ENABLED="$(prompt_config 'Enable Sub2API token refresh' "${SUB2API_TOKEN_REFRESH_ENABLED:-true}" required)"
   SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS="$(prompt_config 'Sub2API token refresh interval in seconds' "${SUB2API_TOKEN_REFRESH_INTERVAL_SECONDS:-300}" required)"
   GITHUB_REPOSITORY="$(prompt_config 'GitHub repository for update checks' "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}" required)"
+  BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/hepingan11/sub2-expansion-backend}"
+  FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/hepingan11/sub2-expansion-frontend}"
   SYSTEM_UPDATE_ENABLED="$(prompt_config 'Enable admin system updates' "${SYSTEM_UPDATE_ENABLED:-true}" required)"
   SYSTEM_UPDATE_COMMAND="${SYSTEM_UPDATE_COMMAND:-}"
-  APP_VERSION="${APP_VERSION:-$(git describe --tags --exact-match 2>/dev/null || printf '%s' v0.2)}"
+  APP_VERSION="${APP_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || printf '%s' v0.2.2)}"
 
   cat > .env <<EOF
 HTTP_PORT=${HTTP_PORT}
@@ -173,6 +175,8 @@ AUTH_SECRET=${AUTH_SECRET}
 AUTH_TOKEN_TTL_HOURS=${AUTH_TOKEN_TTL_HOURS}
 APP_VERSION=${APP_VERSION}
 GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+BACKEND_IMAGE=${BACKEND_IMAGE}
+FRONTEND_IMAGE=${FRONTEND_IMAGE}
 SYSTEM_UPDATE_ENABLED=${SYSTEM_UPDATE_ENABLED}
 SYSTEM_UPDATE_COMMAND=${SYSTEM_UPDATE_COMMAND}
 
@@ -196,14 +200,17 @@ else
   CREATED_ENV=false
   echo ".env already exists, keeping current configuration."
   ensure_env_line PROJECT_DIR "$PROJECT_DIR"
-  ensure_env_line APP_VERSION "$(git describe --tags --exact-match 2>/dev/null || printf '%s' v0.2)"
+  ensure_env_line APP_VERSION "$(git describe --tags --abbrev=0 2>/dev/null || printf '%s' v0.2.2)"
   ensure_env_line GITHUB_REPOSITORY "${GITHUB_REPOSITORY:-hepingan11/sub2-Expansion}"
+  ensure_env_line BACKEND_IMAGE "${BACKEND_IMAGE:-ghcr.io/hepingan11/sub2-expansion-backend}"
+  ensure_env_line FRONTEND_IMAGE "${FRONTEND_IMAGE:-ghcr.io/hepingan11/sub2-expansion-frontend}"
   ensure_env_line SYSTEM_UPDATE_ENABLED "${SYSTEM_UPDATE_ENABLED:-true}"
   ensure_env_line SYSTEM_UPDATE_COMMAND "${SYSTEM_UPDATE_COMMAND:-}"
   ensure_env_line FRONTEND_PUBLIC_URL "${FRONTEND_PUBLIC_URL:-}"
 fi
 
-docker compose up -d --build
+docker compose pull backend frontend
+docker compose up -d --no-build
 
 FINAL_HTTP_PORT="$(env_value HTTP_PORT "$HTTP_PORT")"
 

@@ -183,10 +183,6 @@ button {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28);
 }
 
-.dual-login-panel {
-  width: min(460px, 100%);
-}
-
 .login-panel-head {
   display: flex;
   align-items: flex-start;
@@ -197,35 +193,6 @@ button {
 
 .login-panel-head .brand-mark {
   margin-bottom: 0;
-}
-
-.login-mode-toggle {
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(82px, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8f4ea;
-}
-
-.login-mode-toggle button {
-  min-height: 34px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 10px;
-}
-
-.login-mode-toggle button.is-active {
-  color: #fff;
-  background: var(--ink);
-  box-shadow: 0 8px 18px rgba(29, 37, 35, 0.18);
 }
 
 .social-bind-hint {
@@ -1395,6 +1362,66 @@ textarea {
   background: var(--paper);
 }
 
+.invitation-rule-panel {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.invitation-rule-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.invitation-rule-head p,
+.invitation-rule-section p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.invitation-rule-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.invitation-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+
+.invitation-rule-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px 18px 0 0;
+}
+
+.invitation-rule-section + .invitation-rule-section {
+  margin-left: 18px;
+  padding-left: 18px;
+  padding-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+.invitation-rule-section h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
 .invitation-record-title {
   min-width: 0;
 }
@@ -1486,6 +1513,11 @@ textarea {
 .toggle-row input {
   width: 18px;
   min-height: 18px;
+}
+
+.activity-toggle {
+  min-height: 34px;
+  white-space: nowrap;
 }
 
 .recharge-tier-editor {
@@ -1717,6 +1749,67 @@ textarea {
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.system-settings-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.system-tabbar {
+  display: inline-flex;
+  max-width: 100%;
+  margin: 0 0 18px;
+  padding: 4px;
+  gap: 3px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f3efe5;
+}
+
+.system-tabbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.system-tabbar button:hover {
+  color: var(--ink);
+  background: rgba(29, 37, 35, 0.06);
+}
+
+.system-tabbar button.is-active {
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(29, 37, 35, 0.12);
+}
+
+.system-tab-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.system-tab-indicator.is-ready {
+  background: var(--green);
+}
+
+.system-tab-content {
+  display: grid;
+  gap: 18px;
 }
 
 .settings-grid {
@@ -1995,6 +2088,50 @@ textarea {
   display: grid;
   gap: 5px;
   line-height: 1.55;
+}
+
+.system-update-task {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: 8px;
+  background: #f7fbff;
+}
+
+.system-update-task.status-succeeded {
+  border-left-color: var(--green);
+  background: #f7fff9;
+}
+
+.system-update-task.status-failed {
+  border-left-color: var(--red);
+  background: #fff8f7;
+}
+
+.system-update-task > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.system-update-task span,
+.system-update-task p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.system-update-task strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.system-update-task p {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .system-update-output {
@@ -2799,6 +2936,26 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
+  .invitation-rule-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .invitation-rule-actions {
+    justify-content: flex-start;
+  }
+
+  .invitation-rule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .invitation-rule-section + .invitation-rule-section {
+    margin: 16px 0 0;
+    padding: 16px 0 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
   .invitation-panel-head,
   .invitation-code-row {
     align-items: stretch;
@@ -2835,6 +2992,14 @@ tr:last-child td {
 
   .settings-panel-head {
     align-items: stretch;
+  }
+
+  .system-settings-actions {
+    justify-content: flex-start;
+  }
+
+  .system-update-task {
+    grid-template-columns: 1fr;
   }
 
   .modal-grid.two {
@@ -2882,7 +3047,6 @@ tr:last-child td {
     flex-direction: column;
   }
 
-  .login-mode-toggle,
   .user-metric-grid,
   .user-info-list {
     grid-template-columns: 1fr;
@@ -2941,6 +3105,17 @@ tr:last-child td {
   .checkin-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .system-tabbar {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .system-tabbar button {
+    padding: 0 8px;
+    font-size: 13px;
   }
 
   .daily-limit-field {

@@ -87,6 +87,8 @@ export interface FavoriteSitePayload {
 }
 
 export interface CheckInSettings {
+  checkInEnabled: boolean;
+  rechargeEnabled: boolean;
   dailyMaxUsers: number;
   dailyLimitMode: 'shared' | 'separate';
   directDailyMaxUsers: number;
@@ -105,11 +107,13 @@ export interface CheckInSettings {
 }
 
 export interface InvitationSettings {
+  enabled: boolean;
   afterTime: string;
   amount: number;
 }
 
 export interface CheckInResult {
+  enabled: boolean;
   success: boolean;
   alreadyCheckedIn: boolean;
   userId: string | null;
@@ -227,6 +231,8 @@ export interface UserLoginResponse {
   requires_2fa?: boolean;
   temp_token?: string;
   user_email_masked?: string;
+  admin_token?: string;
+  is_admin?: boolean;
 }
 
 export interface RechargeRewardTier {
@@ -281,6 +287,7 @@ export interface UserRechargeActivity {
 }
 
 export interface UserRechargeRewards {
+  enabled: boolean;
   totalRecharged: number;
   activities: UserRechargeActivity[];
 }
@@ -454,8 +461,20 @@ export interface InvitationStats {
 
 export interface SystemUpdateResult {
   started: boolean;
+  taskId: string;
   output: string;
   message: string;
+}
+
+export interface SystemUpdateStatus {
+  taskId: string;
+  status: 'IDLE' | 'STARTING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | string;
+  currentVersion: string;
+  targetVersion: string;
+  startedAt: string;
+  finishedAt: string;
+  message: string;
+  output: string;
 }
 
 export interface Sub2APIGroupRateUpdatePayload {
@@ -499,6 +518,11 @@ export function setUserSession(data: UserLoginResponse) {
   }
   if (data.refresh_token) {
     localStorage.setItem(USER_REFRESH_TOKEN_KEY, data.refresh_token);
+  }
+  if (data.admin_token && data.is_admin) {
+    setToken(data.admin_token);
+  } else {
+    clearToken();
   }
 }
 
@@ -586,6 +610,8 @@ export async function fetchCheckInStats() {
 }
 
 export async function updateCheckInSettings(
+  checkInEnabled: boolean,
+  rechargeEnabled: boolean,
   dailyMaxUsers: number,
   dailyLimitMode: 'shared' | 'separate',
   directDailyMaxUsers: number,
@@ -603,7 +629,7 @@ export async function updateCheckInSettings(
 ) {
   return request<CheckInSettings>('/api/admin/settings/check-in', {
     method: 'PUT',
-    body: JSON.stringify({ dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, tokenUsageRankingEnabled, admin, sub2api, invitation, invitationGuide, telegram })
+    body: JSON.stringify({ checkInEnabled, rechargeEnabled, dailyMaxUsers, dailyLimitMode, directDailyMaxUsers, socialDailyMaxUsers, prizeTiers: directPrizeTiers, directPrizeTiers, socialPrizeTiers, groupLink, frontendPublicUrl, tokenUsageRankingEnabled, admin, sub2api, invitation, invitationGuide, telegram })
   });
 }
 
@@ -794,6 +820,10 @@ export async function deleteSub2APIGroupRateLog(id: number) {
 
 export async function fetchSystemUpdateCheck() {
   return request<SystemUpdateCheck>('/api/admin/system/update-check');
+}
+
+export async function fetchSystemUpdateStatus() {
+  return request<SystemUpdateStatus>('/api/admin/system/update-status');
 }
 
 export async function runSystemUpdate() {

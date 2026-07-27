@@ -70,6 +70,14 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if err := app.saveSetting(checkInEnabledKey, strconv.FormatBool(req.CheckInEnabled)); err != nil {
+		serverError(c, err)
+		return
+	}
+	if err := app.saveSetting(rechargeEnabledKey, strconv.FormatBool(req.RechargeEnabled)); err != nil {
+		serverError(c, err)
+		return
+	}
 	if err := app.saveSetting(dailyLimitModeKey, dailyLimitMode); err != nil {
 		serverError(c, err)
 		return
@@ -112,6 +120,10 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if err := app.saveSetting(invitationEnabledKey, strconv.FormatBool(invitation.Enabled)); err != nil {
+		serverError(c, err)
+		return
+	}
 	if err := app.saveInvitationGuideConfig(req.InvitationGuide); err != nil {
 		badRequest(c, err.Error())
 		return
@@ -151,6 +163,14 @@ func (app *App) updateCheckInSettings(c *gin.Context) {
 }
 
 func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
+	checkInEnabled, err := app.checkInEnabled()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
+	rechargeEnabled, err := app.rechargeEnabled()
+	if err != nil {
+		return CheckInSettingsResponse{}, err
+	}
 	dailyMaxUsers, err := app.getDailyMaxUsers()
 	if err != nil {
 		return CheckInSettingsResponse{}, err
@@ -214,6 +234,8 @@ func (app *App) loadCheckInSettings() (CheckInSettingsResponse, error) {
 		return CheckInSettingsResponse{}, err
 	}
 	return CheckInSettingsResponse{
+		CheckInEnabled:           checkInEnabled,
+		RechargeEnabled:          rechargeEnabled,
 		DailyMaxUsers:            dailyMaxUsers,
 		DailyLimitMode:           dailyLimitMode,
 		DirectDailyMaxUsers:      directDailyMaxUsers,
@@ -282,7 +304,7 @@ func normalizeInvitationConfig(input InvitationConfig) (InvitationConfig, error)
 		if input.Amount.Cmp(decimal.Zero) > 0 {
 			return InvitationConfig{}, errors.New("设置邀请奖励金额时必须同时设置新人账号时间门槛")
 		}
-		return InvitationConfig{Amount: MustAmount("0.00")}, nil
+		return InvitationConfig{Enabled: input.Enabled, Amount: MustAmount("0.00")}, nil
 	}
 	parsed, err := time.Parse(time.RFC3339, input.AfterTime)
 	if err != nil {
@@ -296,6 +318,10 @@ func normalizeInvitationConfig(input InvitationConfig) (InvitationConfig, error)
 }
 
 func (app *App) loadInvitationConfig() (InvitationConfig, error) {
+	enabled, err := app.invitationEnabled()
+	if err != nil {
+		return InvitationConfig{}, err
+	}
 	afterTime, err := app.settingOrDefault(invitationAfterTimeKey, "")
 	if err != nil {
 		return InvitationConfig{}, err
@@ -308,11 +334,26 @@ func (app *App) loadInvitationConfig() (InvitationConfig, error) {
 	if err != nil {
 		amount = MustAmount("0.00")
 	}
-	config, err := normalizeInvitationConfig(InvitationConfig{AfterTime: afterTime, Amount: amount})
+	config, err := normalizeInvitationConfig(InvitationConfig{Enabled: enabled, AfterTime: afterTime, Amount: amount})
 	if err != nil {
-		return InvitationConfig{Amount: MustAmount("0.00")}, nil
+		return InvitationConfig{Enabled: false, Amount: MustAmount("0.00")}, nil
 	}
 	return config, nil
+}
+
+func (app *App) checkInEnabled() (bool, error) {
+	value, err := app.settingOrDefault(checkInEnabledKey, "true")
+	return parseBoolSetting(value, true), err
+}
+
+func (app *App) invitationEnabled() (bool, error) {
+	value, err := app.settingOrDefault(invitationEnabledKey, "true")
+	return parseBoolSetting(value, true), err
+}
+
+func (app *App) rechargeEnabled() (bool, error) {
+	value, err := app.settingOrDefault(rechargeEnabledKey, "true")
+	return parseBoolSetting(value, true), err
 }
 
 func (app *App) effectiveAdminConfig() (AdminConfig, error) {

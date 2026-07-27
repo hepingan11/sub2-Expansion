@@ -1,0 +1,14 @@
+services:
+  backend:
+    build:
+      context: ./backend-go
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: sub2-expansion-backend:dev
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-}
+    image: sub2-expansion-frontend:dev
