@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -89,6 +90,18 @@ func TestTelegramMemberIsActive(t *testing.T) {
 				t.Fatalf("telegramMemberIsActive() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsTelegramUnauthorized(t *testing.T) {
+	if !isTelegramUnauthorized(errors.New("Unauthorized")) {
+		t.Fatal("expected Unauthorized to be treated as permanent")
+	}
+	if !isTelegramUnauthorized(errors.New("Unauthorized: invalid token")) {
+		t.Fatal("expected Unauthorized detail to be treated as permanent")
+	}
+	if isTelegramUnauthorized(errors.New("request timeout")) {
+		t.Fatal("did not expect transient errors to be treated as permanent")
 	}
 }
 

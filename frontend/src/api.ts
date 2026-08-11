@@ -86,6 +86,57 @@ export interface FavoriteSitePayload {
   group: string;
 }
 
+export type VideoAccountPoolFormat = 'openai_videos';
+
+export interface VideoAccountPool {
+  id: number;
+  name: string;
+  format: VideoAccountPoolFormat;
+  baseUrl: string;
+  baseUrlIsComplete: boolean;
+  apiKeySet: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoAccountPoolPayload {
+  name: string;
+  format: VideoAccountPoolFormat;
+  baseUrl: string;
+  baseUrlIsComplete: boolean;
+  apiKey: string;
+  clearApiKey: boolean;
+  enabled: boolean;
+}
+
+export type VideoAccountPoolTestStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
+
+export interface VideoAccountPoolTestResult {
+  id: string;
+  taskId: string;
+  model: string;
+  status: VideoAccountPoolTestStatus;
+  progress: number;
+  videoUrl?: string;
+  error?: {
+    code?: string;
+    message: string;
+  };
+  createdAt?: number;
+  completedAt?: number;
+}
+
+export interface VideoAccountPoolTestPayload {
+  model: string;
+  prompt: string;
+  images: string[];
+  videoUrl: string;
+  duration: 6 | 10 | 15;
+  aspectRatio: '16:9' | '9:16';
+  resolution: '480p' | '720p';
+}
+
 export interface CheckInSettings {
   dailyMaxUsers: number;
   dailyLimitMode: 'shared' | 'separate';
@@ -690,6 +741,39 @@ export async function deleteFavoriteSite(id: number) {
   return request<void>(`/api/admin/favorite-sites/${id}`, {
     method: 'DELETE'
   });
+}
+
+export async function fetchVideoAccountPools() {
+  return request<VideoAccountPool[]>('/api/admin/video-account-pools');
+}
+
+export async function createVideoAccountPool(payload: VideoAccountPoolPayload) {
+  return request<VideoAccountPool>('/api/admin/video-account-pools', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateVideoAccountPool(id: number, payload: VideoAccountPoolPayload) {
+  return request<VideoAccountPool>(`/api/admin/video-account-pools/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteVideoAccountPool(id: number) {
+  return request<void>(`/api/admin/video-account-pools/${id}`, { method: 'DELETE' });
+}
+
+export async function startVideoAccountPoolTest(id: number, payload: VideoAccountPoolTestPayload) {
+  return request<VideoAccountPoolTestResult>(`/api/admin/video-account-pools/${id}/test`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchVideoAccountPoolTest(id: number, taskId: string) {
+  return request<VideoAccountPoolTestResult>(`/api/admin/video-account-pools/${id}/test/${encodeURIComponent(taskId)}`);
 }
 
 export async function fetchRechargeActivities() {

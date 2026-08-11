@@ -124,6 +124,19 @@ func (app *App) migrate() error {
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_favorite_sites_url ON favorite_sites (url)`,
 		`CREATE INDEX IF NOT EXISTS idx_favorite_sites_group_sort ON favorite_sites (group_name, sort_order)`,
+		`CREATE TABLE IF NOT EXISTS video_account_pools (
+			id BIGSERIAL PRIMARY KEY,
+			name VARCHAR(100) NOT NULL,
+			format VARCHAR(40) NOT NULL,
+			base_url VARCHAR(500) NOT NULL,
+			base_url_is_complete BOOLEAN NOT NULL DEFAULT FALSE,
+			api_key TEXT NOT NULL,
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`ALTER TABLE video_account_pools ADD COLUMN IF NOT EXISTS base_url_is_complete BOOLEAN NOT NULL DEFAULT FALSE`,
+		`CREATE INDEX IF NOT EXISTS idx_video_account_pools_enabled ON video_account_pools (enabled, id)`,
 		`CREATE TABLE IF NOT EXISTS recharge_activities (
 			id BIGSERIAL PRIMARY KEY,
 			name VARCHAR(120) NOT NULL,

@@ -173,6 +173,36 @@ func (s *FavoriteSite) BeforeUpdate(*gorm.DB) error {
 	return nil
 }
 
+type VideoAccountPool struct {
+	ID                uint64   `gorm:"primaryKey;column:id"`
+	Name              string   `gorm:"column:name;size:100;not null"`
+	Format            string   `gorm:"column:format;size:40;not null"`
+	BaseURL           string   `gorm:"column:base_url;size:500;not null"`
+	BaseURLIsComplete bool     `gorm:"column:base_url_is_complete;not null;default:false"`
+	APIKey            string   `gorm:"column:api_key;type:text;not null"`
+	Enabled           bool     `gorm:"column:enabled;not null;default:true"`
+	CreatedAt         JSONTime `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt         JSONTime `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (VideoAccountPool) TableName() string { return "video_account_pools" }
+
+func (p *VideoAccountPool) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if p.CreatedAt.Time.IsZero() {
+		p.CreatedAt = now
+	}
+	if p.UpdatedAt.Time.IsZero() {
+		p.UpdatedAt = now
+	}
+	return nil
+}
+
+func (p *VideoAccountPool) BeforeUpdate(*gorm.DB) error {
+	p.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
 type RechargeActivity struct {
 	ID          uint64    `gorm:"primaryKey;column:id" json:"id"`
 	Name        string    `gorm:"column:name;size:120;not null" json:"name"`

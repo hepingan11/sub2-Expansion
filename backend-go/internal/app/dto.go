@@ -39,6 +39,55 @@ type FavoriteSiteRequest struct {
 	Group       string `json:"group"`
 }
 
+type VideoAccountPoolRequest struct {
+	Name              string `json:"name"`
+	Format            string `json:"format"`
+	BaseURL           string `json:"baseUrl"`
+	BaseURLIsComplete bool   `json:"baseUrlIsComplete"`
+	APIKey            string `json:"apiKey"`
+	ClearAPIKey       bool   `json:"clearApiKey"`
+	Enabled           bool   `json:"enabled"`
+}
+
+type VideoAccountPoolResponse struct {
+	ID                uint64   `json:"id"`
+	Name              string   `json:"name"`
+	Format            string   `json:"format"`
+	BaseURL           string   `json:"baseUrl"`
+	BaseURLIsComplete bool     `json:"baseUrlIsComplete"`
+	APIKeySet         bool     `json:"apiKeySet"`
+	Enabled           bool     `json:"enabled"`
+	CreatedAt         JSONTime `json:"createdAt"`
+	UpdatedAt         JSONTime `json:"updatedAt"`
+}
+
+type VideoAccountPoolTestResponse struct {
+	ID          string                     `json:"id"`
+	TaskID      string                     `json:"taskId"`
+	Model       string                     `json:"model"`
+	Status      string                     `json:"status"`
+	Progress    int                        `json:"progress"`
+	VideoURL    string                     `json:"videoUrl,omitempty"`
+	Error       *VideoAccountPoolTestError `json:"error,omitempty"`
+	CreatedAt   int64                      `json:"createdAt,omitempty"`
+	CompletedAt int64                      `json:"completedAt,omitempty"`
+}
+
+type VideoAccountPoolTestError struct {
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message"`
+}
+
+type VideoAccountPoolTestRequest struct {
+	Model       string   `json:"model"`
+	Prompt      string   `json:"prompt"`
+	Images      []string `json:"images"`
+	VideoURL    string   `json:"videoUrl"`
+	Duration    int      `json:"duration"`
+	AspectRatio string   `json:"aspectRatio"`
+	Resolution  string   `json:"resolution"`
+}
+
 type DashboardStatsResponse struct {
 	Total       int64             `json:"total"`
 	Available   int64             `json:"available"`

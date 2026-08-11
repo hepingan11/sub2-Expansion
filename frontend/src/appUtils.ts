@@ -156,13 +156,15 @@ export function sectionTitle(section: DashboardSection) {
       return '充值活动';
     case 'rates':
       return '倍率监控';
+    case 'video-pools':
+      return 'AI 视频号池';
     case 'system':
       return '系统设置';
   }
 }
 
 export function isDashboardSection(value: unknown): value is DashboardSection {
-  return ['checkins', 'invitations', 'favorites', 'recharge', 'rates', 'system'].includes(String(value));
+  return ['checkins', 'invitations', 'favorites', 'recharge', 'rates', 'video-pools', 'system'].includes(String(value));
 }
 
 export function normalizeStats(stats: Stats): Stats {

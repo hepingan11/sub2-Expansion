@@ -161,6 +161,10 @@ func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig, done cha
 	username := ""
 	if me, err := app.telegramGetMe(ctx, cfg); err != nil {
 		log.Printf("Telegram bot getMe failed: %v", err)
+		if isTelegramUnauthorized(err) {
+			log.Printf("Telegram bot stopped because the bot token was rejected by Telegram")
+			return
+		}
 	} else {
 		username = strings.TrimSpace(me.Username)
 		if err := app.saveSetting(telegramBotUsernameKey, strings.TrimPrefix(username, "@")); err != nil {
@@ -170,6 +174,10 @@ func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig, done cha
 	}
 	if err := app.telegramDeleteWebhook(ctx, cfg, true); err != nil {
 		log.Printf("Telegram deleteWebhook failed: %v", err)
+		if isTelegramUnauthorized(err) {
+			log.Printf("Telegram bot stopped because the bot token was rejected by Telegram")
+			return
+		}
 	}
 
 	pollEvery := time.Duration(cfg.PollIntervalSeconds) * time.Second
@@ -186,6 +194,10 @@ func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig, done cha
 		updates, err := app.telegramGetUpdates(ctx, cfg, offset)
 		if err != nil {
 			log.Printf("Telegram getUpdates failed: %v", err)
+			if isTelegramUnauthorized(err) {
+				log.Printf("Telegram bot stopped because the bot token was rejected by Telegram")
+				return
+			}
 			if strings.Contains(strings.ToLower(err.Error()), "conflict") {
 				log.Printf("Telegram bot stopped because another instance owns this bot token")
 				return
@@ -204,6 +216,16 @@ func (app *App) runTelegramBot(ctx context.Context, cfg TelegramConfig, done cha
 			app.handleTelegramUpdate(ctx, cfg, update, username)
 		}
 	}
+}
+
+// Unauthorized means the configured token is invalid or revoked. Retrying it
+// cannot succeed until an administrator changes the bot configuration.
+func isTelegramUnauthorized(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return message == "unauthorized" || strings.HasPrefix(message, "unauthorized:")
 }
 
 func (app *App) telegramGetMe(ctx context.Context, cfg TelegramConfig) (telegramMe, error) {

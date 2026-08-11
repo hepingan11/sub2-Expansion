@@ -23,7 +23,7 @@ import {
   TelegramSettings
 } from './api';
 
-export type DashboardSection = 'checkins' | 'invitations' | 'favorites' | 'recharge' | 'rates' | 'system';
+export type DashboardSection = 'checkins' | 'invitations' | 'favorites' | 'recharge' | 'rates' | 'video-pools' | 'system';
 export type LoginMode = 'user' | 'admin';
 
 export const emptyStats: Stats = { total: 0, available: 0, assigned: 0, used: 0, voided: 0, amountStats: [] };

@@ -3,11 +3,13 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, usePa
 import {
   Bookmark,
   CalendarCheck2,
+  Clapperboard,
   ChevronDown,
   CheckCircle2,
   CircleDollarSign,
   Copy,
   ExternalLink,
+  FlaskConical,
   Gift,
   Globe2,
   GripVertical,
@@ -38,11 +40,13 @@ import {
   connectTelegramBot,
   createCode,
   createFavoriteSite,
+  createVideoAccountPool,
   createRechargeActivity,
   createSub2APIGroupRateLog,
   claimRechargeReward,
   deleteCode,
   deleteFavoriteSite,
+  deleteVideoAccountPool,
   deleteRechargeActivity,
   deleteSub2APIGroupRateLog,
   fetchCheckInSettings,
@@ -51,6 +55,8 @@ import {
   fetchCurrentUser,
   fetchFavoriteSiteGroups,
   fetchFavoriteSites,
+  fetchVideoAccountPools,
+  fetchVideoAccountPoolTest,
   fetchInvitationRecords,
   fetchInvitationStats,
   fetchPublicSub2APIGroupRateSeries,
@@ -88,16 +94,22 @@ import {
   Sub2APIGroupRateSeries,
   Sub2APISettings,
   TelegramSettings,
+  VideoAccountPool,
+  VideoAccountPoolPayload,
+  VideoAccountPoolTestResult,
+  VideoAccountPoolTestPayload,
   Sub2APIUserProfile,
   SystemUpdateCheck,
   updateCheckInSettings,
   updateCode,
   updateFavoriteSite,
+  updateVideoAccountPool,
   updateRechargeActivity,
   updateSub2APIGroupRateMonitor,
   updateSub2APIGroupRateLog,
   refreshSub2APIGroupRates,
   runSystemUpdate,
+  startVideoAccountPoolTest,
   UserRechargeRewards,
   UserTokenUsageRanking,
   userCheckIn,
@@ -1007,6 +1019,15 @@ function Dashboard({
   const [favoriteTotalPages, setFavoriteTotalPages] = useState(1);
   const [editingFavorite, setEditingFavorite] = useState<FavoriteSite | null>(null);
   const [favoriteModalOpen, setFavoriteModalOpen] = useState(false);
+  const [videoPools, setVideoPools] = useState<VideoAccountPool[]>([]);
+  const [editingVideoPool, setEditingVideoPool] = useState<VideoAccountPool | null>(null);
+  const [videoPoolModalOpen, setVideoPoolModalOpen] = useState(false);
+  const [videoTestPool, setVideoTestPool] = useState<VideoAccountPool | null>(null);
+  const [videoTestModalOpen, setVideoTestModalOpen] = useState(false);
+  const [videoPoolTests, setVideoPoolTests] = useState<Record<number, VideoAccountPoolTestResult>>({});
+  const [videoPoolTestParams, setVideoPoolTestParams] = useState<Record<number, VideoAccountPoolTestPayload>>({});
+  const [testingVideoPoolIds, setTestingVideoPoolIds] = useState<number[]>([]);
+  const videoPoolTestRuns = useRef<Record<number, number>>({});
   const [rechargeActivities, setRechargeActivities] = useState<RechargeActivity[]>([]);
   const [rechargeClaims, setRechargeClaims] = useState<AdminRechargeRewardClaim[]>([]);
   const [rechargeRewardStats, setRechargeRewardStats] = useState<RechargeRewardStats | null>(null);
@@ -1173,6 +1194,65 @@ function Dashboard({
     }
   }
 
+  async function loadVideoPools() {
+    setLoading(true);
+    setError('');
+    try {
+      setVideoPools(await fetchVideoAccountPools());
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '加载视频号池失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function testVideoPool(pool: VideoAccountPool, payload: VideoAccountPoolTestPayload) {
+    const runID = (videoPoolTestRuns.current[pool.id] ?? 0) + 1;
+    videoPoolTestRuns.current[pool.id] = runID;
+    setVideoPoolTestParams((current) => ({ ...current, [pool.id]: payload }));
+    setTestingVideoPoolIds((current) => current.includes(pool.id) ? current : [...current, pool.id]);
+    try {
+      let result = await startVideoAccountPoolTest(pool.id, payload);
+      if (videoPoolTestRuns.current[pool.id] !== runID) return;
+      setVideoPoolTests((current) => ({ ...current, [pool.id]: result }));
+      let pollCount = 0;
+      let consecutivePollFailures = 0;
+      while (result.status === 'queued' || result.status === 'in_progress') {
+        if (pollCount >= 120) {
+          throw new Error(`${pool.name} 测试任务超过 10 分钟仍未完成，已停止轮询`);
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 5000));
+        pollCount += 1;
+        if (videoPoolTestRuns.current[pool.id] !== runID) return;
+        try {
+          result = await fetchVideoAccountPoolTest(pool.id, result.taskId);
+          consecutivePollFailures = 0;
+        } catch (pollError) {
+          consecutivePollFailures += 1;
+          if (consecutivePollFailures >= 3) {
+            throw pollError;
+          }
+          continue;
+        }
+        if (videoPoolTestRuns.current[pool.id] !== runID) return;
+        setVideoPoolTests((current) => ({ ...current, [pool.id]: result }));
+      }
+      if (result.status === 'completed') {
+        notifySuccess(`${pool.name} 接口测试成功`);
+      } else {
+        notifyError(result.error?.message || `${pool.name} 接口测试失败`);
+      }
+    } catch (err) {
+      if (videoPoolTestRuns.current[pool.id] === runID) {
+        notifyError(err instanceof Error ? err.message : '视频号池接口测试失败');
+      }
+    } finally {
+      if (videoPoolTestRuns.current[pool.id] === runID) {
+        setTestingVideoPoolIds((current) => current.filter((id) => id !== pool.id));
+      }
+    }
+  }
+
   async function loadRechargeActivities(
     nextClaimPage = rechargeClaimPage,
     claimFilters = { keyword: rechargeClaimKeyword, status: rechargeClaimStatus }
@@ -1329,6 +1409,9 @@ function Dashboard({
     if (activeSection === 'rates') {
       loadGroupRateMonitor();
     }
+    if (activeSection === 'video-pools') {
+      loadVideoPools();
+    }
     if (activeSection === 'system') {
       checkSystemUpdate(false);
     }
@@ -1341,6 +1424,7 @@ function Dashboard({
     { key: 'checkins' as const, label: '签到管理', icon: CalendarCheck2 },
     { key: 'favorites' as const, label: '网站收藏', icon: Bookmark },
     { key: 'rates' as const, label: '倍率监控', icon: Globe2 },
+    { key: 'video-pools' as const, label: '视频号池', icon: Clapperboard },
     { key: 'system' as const, label: '系统设置', icon: Settings2 }
   ];
   const rechargeClaimStatusOptions = [
@@ -2791,6 +2875,132 @@ function Dashboard({
         </>
       )}
 
+      {activeSection === 'video-pools' && (
+        <>
+          <section className="toolbar video-pool-toolbar">
+            <div className="video-pool-summary">
+              <strong>{videoPools.filter((pool) => pool.enabled).length}</strong>
+              <span>个已启用上游</span>
+            </div>
+            <button
+              className="primary-btn"
+              type="button"
+              onClick={() => {
+                setEditingVideoPool(null);
+                setVideoPoolModalOpen(true);
+              }}
+            >
+              <Plus size={18} />
+              新增上游
+            </button>
+          </section>
+
+          <section className="table-panel video-pool-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>接口格式</th>
+                  <th>Base URL</th>
+                  <th>API Key</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {videoPools.map((pool) => {
+                  const testResult = videoPoolTests[pool.id];
+                  const testing = testingVideoPoolIds.includes(pool.id);
+                  return (
+                  <React.Fragment key={pool.id}>
+                  <tr>
+                    <td><strong>{pool.name}</strong></td>
+                    <td>OpenAI Videos</td>
+                    <td>
+                      <div className="video-pool-endpoint">
+                        <span>{pool.baseUrl}</span>
+                        <small>{pool.baseUrlIsComplete ? '完整接口 URL' : `${pool.baseUrl}/v1/videos`}</small>
+                      </div>
+                    </td>
+                    <td>{pool.apiKeySet ? '已设置' : '未设置'}</td>
+                    <td>
+                      <span className={`pool-status ${pool.enabled ? 'is-enabled' : ''}`}>
+                        {pool.enabled ? '已启用' : '已停用'}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="icon-btn"
+                        type="button"
+                        title="测试接口"
+                        disabled={testing || !pool.apiKeySet}
+                        onClick={() => {
+                          setVideoTestPool(pool);
+                          setVideoTestModalOpen(true);
+                        }}
+                      >
+                        <FlaskConical className={testing ? 'spin' : ''} size={16} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        type="button"
+                        title="编辑上游"
+                        onClick={() => {
+                          setEditingVideoPool(pool);
+                          setVideoPoolModalOpen(true);
+                        }}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                  {testResult && (
+                    <tr className="video-test-detail-row">
+                      <td colSpan={6}>
+                        <div className={`video-test-result is-${testResult.status}`}>
+                          <div>
+                            <strong>{videoTestStatusText(testResult.status)}</strong>
+                            <span>任务 {testResult.taskId}</span>
+                            <span>
+                              {videoPoolTestParams[pool.id]?.model || testResult.model || '-'} · {videoPoolTestParams[pool.id]?.duration || '-'}s · {videoPoolTestParams[pool.id]?.aspectRatio || '-'} · {videoPoolTestParams[pool.id]?.resolution || '-'}
+                            </span>
+                          </div>
+                          {(testResult.status === 'queued' || testResult.status === 'in_progress') && (
+                            <div className="video-test-progress">
+                              <span style={{ width: `${Math.max(0, Math.min(100, testResult.progress))}%` }} />
+                              <strong>{testResult.progress}%</strong>
+                            </div>
+                          )}
+                          {testResult.status === 'completed' && testResult.videoUrl && (
+                            <a className="ghost-btn" href={testResult.videoUrl} target="_blank" rel="noreferrer">
+                              <ExternalLink size={16} />
+                              查看测试视频
+                            </a>
+                          )}
+                          {testResult.status === 'failed' && (
+                            <span className="video-test-error">
+                              {testResult.error?.code ? `${testResult.error.code}: ` : ''}{testResult.error?.message || '上游未提供失败原因'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
+                {!loading && videoPools.length === 0 && (
+                  <tr><td className="empty-cell" colSpan={6}>暂无视频上游，新增后可加入号池。</td></tr>
+                )}
+                {loading && videoPools.length === 0 && (
+                  <tr><td className="empty-cell" colSpan={6}>加载中...</td></tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
+
       {activeSection === 'system' && (
         <form className="settings-panel" onSubmit={saveCheckInSettings}>
           <div className="settings-panel-head">
@@ -3225,6 +3435,41 @@ function Dashboard({
             setRechargeModalOpen(false);
             setEditingRechargeActivity(null);
             loadRechargeActivities();
+          }}
+        />
+      )}
+
+      {videoPoolModalOpen && (
+        <VideoAccountPoolModal
+          pool={editingVideoPool}
+          onClose={() => setVideoPoolModalOpen(false)}
+          onSaved={() => {
+            setVideoPoolModalOpen(false);
+            setEditingVideoPool(null);
+            loadVideoPools();
+          }}
+          onDeleted={() => {
+            setVideoPoolModalOpen(false);
+            setEditingVideoPool(null);
+            loadVideoPools();
+          }}
+        />
+      )}
+
+      {videoTestModalOpen && videoTestPool && (
+        <VideoAccountPoolTestModal
+          pool={videoTestPool}
+          onClose={() => {
+            setVideoTestModalOpen(false);
+            setVideoTestPool(null);
+          }}
+          onStart={(payload) => {
+            setVideoTestModalOpen(false);
+            const pool = videoTestPool;
+            setVideoTestPool(null);
+            if (pool) {
+              testVideoPool(pool, payload);
+            }
           }}
         />
       )}
@@ -3776,6 +4021,276 @@ function FavoriteSiteModal({ site, groups, onClose, onSaved, onDeleted }: { site
       </form>
     </div>
   );
+}
+
+function VideoAccountPoolTestModal({
+  pool,
+  onClose,
+  onStart
+}: {
+  pool: VideoAccountPool;
+  onClose: () => void;
+  onStart: (payload: VideoAccountPoolTestPayload) => void;
+}) {
+  const [model, setModel] = useState('seedance-2.0');
+  const [prompt, setPrompt] = useState('A calm ocean wave at sunrise.');
+  const [images, setImages] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [duration, setDuration] = useState<VideoAccountPoolTestPayload['duration']>(6);
+  const [aspectRatio, setAspectRatio] = useState<VideoAccountPoolTestPayload['aspectRatio']>('16:9');
+  const [resolution, setResolution] = useState<VideoAccountPoolTestPayload['resolution']>('480p');
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    onStart({
+      model: model.trim(), prompt: prompt.trim(),
+      images: images.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
+      videoUrl: videoUrl.trim(), duration, aspectRatio, resolution
+    });
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal video-pool-test-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">接口测试</span>
+            <h2>测试「{pool.name}」</h2>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        <label>
+          模型 ID
+          <input value={model} onChange={(event) => setModel(event.target.value)} maxLength={100} required />
+        </label>
+        <label>
+          提示词
+          <textarea className="compact-textarea" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={4096} rows={3} required />
+          <span className="field-hint">{prompt.length} / 4096</span>
+        </label>
+        <label>
+          图片素材 URL（每行一条，最多 7 条）
+          <textarea className="compact-textarea" value={images} onChange={(event) => setImages(event.target.value)} rows={2} placeholder="https://example.com/image.jpg" disabled={Boolean(videoUrl.trim())} />
+        </label>
+        <label>
+          视频素材 URL（可选，不能与图片同时填写）
+          <input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://example.com/source.mp4" disabled={images.trim().length > 0} />
+        </label>
+        <div className="modal-grid three video-test-options">
+          <label>
+            时长
+            <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as VideoAccountPoolTestPayload['duration'])}>
+              <option value={6}>6 秒</option>
+              <option value={10}>10 秒</option>
+              <option value={15}>15 秒</option>
+            </select>
+          </label>
+          <label>
+            比例
+            <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as VideoAccountPoolTestPayload['aspectRatio'])}>
+              <option value="16:9">16:9</option>
+              <option value="9:16">9:16</option>
+            </select>
+          </label>
+          <label>
+            分辨率
+            <select value={resolution} onChange={(event) => setResolution(event.target.value as VideoAccountPoolTestPayload['resolution'])}>
+              <option value="480p">480p</option>
+              <option value="720p">720p</option>
+            </select>
+          </label>
+        </div>
+        <div className="video-test-note">素材必须是调用方可公开访问的 HTTP/HTTPS 直链；图片与视频素材不能同时填写。</div>
+        <div className="modal-actions">
+          <button className="ghost-btn" type="button" onClick={onClose}>取消</button>
+          <button className="primary-btn" type="submit" disabled={!model.trim() || !prompt.trim()}>
+            <FlaskConical size={17} />
+            开始测试
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function VideoAccountPoolModal({
+  pool,
+  onClose,
+  onSaved,
+  onDeleted
+}: {
+  pool: VideoAccountPool | null;
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const [form, setForm] = useState<VideoAccountPoolPayload>({
+    name: pool?.name ?? '',
+    format: pool?.format ?? 'openai_videos',
+    baseUrl: pool?.baseUrl ?? '',
+    baseUrlIsComplete: pool?.baseUrlIsComplete ?? false,
+    apiKey: '',
+    clearApiKey: false,
+    enabled: pool?.enabled ?? true
+  });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  function patch<K extends keyof VideoAccountPoolPayload>(key: K, value: VideoAccountPoolPayload[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        baseUrl: form.baseUrl.trim().replace(/\/+$/, ''),
+        apiKey: form.apiKey.trim()
+      };
+      if (pool) {
+        await updateVideoAccountPool(pool.id, payload);
+      } else {
+        await createVideoAccountPool(payload);
+      }
+      notifySuccess(pool ? '视频上游已更新' : '视频上游已添加');
+      onSaved();
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '保存视频上游失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removePool() {
+    if (!pool || !await confirmDialog({
+      title: '删除视频上游',
+      message: `确认删除“${pool.name}”？保存的 API Key 也会一并删除。`,
+      confirmText: '删除',
+      danger: true
+    })) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteVideoAccountPool(pool.id);
+      notifySuccess('视频上游已删除');
+      onDeleted();
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '删除视频上游失败');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const normalizedBaseURL = form.baseUrl.trim().replace(/\/+$/, '');
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal video-pool-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">OpenAI Videos</span>
+            <h2>{pool ? '编辑视频上游' : '新增视频上游'}</h2>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-grid two">
+          <label>
+            号池名称
+            <input value={form.name} onChange={(event) => patch('name', event.target.value)} maxLength={100} required />
+          </label>
+          <label>
+            接口格式
+            <select value={form.format} onChange={(event) => patch('format', event.target.value as VideoAccountPoolPayload['format'])}>
+              <option value="openai_videos">OpenAI Videos</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Base URL
+          <input
+            type="url"
+            value={form.baseUrl}
+            onChange={(event) => patch('baseUrl', event.target.value)}
+            placeholder="https://video-api.example.com"
+            required
+          />
+        </label>
+        <div className="video-endpoint-preview">
+          <span>生成接口</span>
+          <code>{normalizedBaseURL ? (form.baseUrlIsComplete ? normalizedBaseURL : `${normalizedBaseURL}/v1/videos`) : (form.baseUrlIsComplete ? '完整接口 URL' : '$BaseURL/v1/videos')}</code>
+        </div>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={form.baseUrlIsComplete}
+            onChange={(event) => patch('baseUrlIsComplete', event.target.checked)}
+          />
+          填写的是完整接口 URL，不自动追加 /v1/videos
+        </label>
+        <label>
+          API Key
+          <input
+            type="password"
+            value={form.apiKey}
+            onChange={(event) => patch('apiKey', event.target.value)}
+            placeholder={pool?.apiKeySet ? '已设置，留空则不修改' : 'Bearer API Key'}
+            required={!pool}
+            disabled={form.clearApiKey}
+            autoComplete="new-password"
+          />
+        </label>
+        {pool?.apiKeySet && (
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={form.clearApiKey}
+              onChange={(event) => patch('clearApiKey', event.target.checked)}
+            />
+            清除已保存的 API Key
+          </label>
+        )}
+        <label className="toggle-row">
+          <input type="checkbox" checked={form.enabled} onChange={(event) => patch('enabled', event.target.checked)} />
+          启用这个上游
+        </label>
+
+        <div className="modal-actions">
+          {pool && (
+            <button className="danger-btn" type="button" disabled={saving || deleting} onClick={removePool}>
+              <Trash2 size={17} />
+              {deleting ? '删除中...' : '删除'}
+            </button>
+          )}
+          <button className="primary-btn" type="submit" disabled={saving || deleting}>
+            <CheckCircle2 size={18} />
+            {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function videoTestStatusText(status: VideoAccountPoolTestResult['status']) {
+  switch (status) {
+    case 'queued':
+      return '等待生成';
+    case 'in_progress':
+      return '生成中';
+    case 'completed':
+      return '测试成功';
+    case 'failed':
+      return '测试失败';
+  }
 }
 
 function RechargeActivityModal({ activity, onClose, onSaved }: { activity: RechargeActivity | null; onClose: () => void; onSaved: () => void }) {
