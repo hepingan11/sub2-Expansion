@@ -66,6 +66,7 @@ import {
   fetchSub2APIGroupRateMonitor,
   fetchSub2APIGroupRateLogs,
   fetchSystemUpdateCheck,
+  fetchSystemUpdateStatus,
   fetchUserCheckInStatus,
   fetchUserTokenUsageRanking,
   fetchUserRechargeRewards,
@@ -75,7 +76,6 @@ import {
   FavoriteSitePayload,
   getUserToken,
   getToken,
-  login,
   PrizeTierSetting,
   RedeemCode,
   RedeemCodeStatus,
@@ -100,6 +100,7 @@ import {
   VideoAccountPoolTestPayload,
   Sub2APIUserProfile,
   SystemUpdateCheck,
+  SystemUpdateStatus,
   updateCheckInSettings,
   updateCode,
   updateFavoriteSite,
@@ -131,7 +132,6 @@ import {
   emptyTelegramSettings,
   favoriteEmojiPresets,
   favoriteIconPresets,
-  LoginMode,
   statusText
 } from './appConstants';
 import {
@@ -188,8 +188,8 @@ function RootRedirect() {
   if (params.get('platform') || params.get('userid') || params.get('invitecode')) {
     return <Navigate to={`/login${search}`} replace />;
   }
-  if (getUserToken()) return <Navigate to="/user" replace />;
   if (getToken()) return <Navigate to="/admin/recharge" replace />;
+  if (getUserToken()) return <Navigate to="/user" replace />;
   return <Navigate to="/login" replace />;
 }
 
@@ -197,14 +197,16 @@ function LoginRoute() {
   const navigate = useNavigate();
   return (
     <UnifiedLogin
-      onAdminLogin={() => navigate('/admin/recharge', { replace: true })}
-      onUserLogin={() => navigate('/user', { replace: true })}
+      onLogin={(isAdmin) => navigate(isAdmin ? '/admin/recharge' : '/user', { replace: true })}
     />
   );
 }
 
 function UserRoute() {
   const navigate = useNavigate();
+  if (getToken()) {
+    return <Navigate to="/admin/recharge" replace />;
+  }
   if (!getUserToken()) {
     return <Navigate to="/login" replace />;
   }
@@ -223,11 +225,9 @@ function AdminRoute() {
   return <Dashboard section={section} onSectionChange={(nextSection) => navigate(`/admin/${nextSection}`)} onLogout={() => navigate('/login', { replace: true })} />;
 }
 
-function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void; onUserLogin: () => void }) {
+function UnifiedLogin({ onLogin }: { onLogin: (isAdmin: boolean) => void }) {
   const pendingSocialBinding = useMemo(() => getPendingSocialBindingFromURL(), []);
   const lockedInviteCode = useMemo(() => getInviteCodeFromURL(), []);
-  const [mode, setMode] = useState<LoginMode>('user');
-  const [username, setUsername] = useState('admin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
@@ -241,13 +241,6 @@ function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void;
     setLoading(true);
     setError('');
     try {
-      if (mode === 'admin') {
-        await login(username, password);
-        clearUserSession();
-        onAdminLogin();
-        return;
-      }
-
       const data = tempToken
         ? await userLogin2FA(tempToken, totpCode)
         : await userLogin(email, password);
@@ -259,11 +252,13 @@ function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void;
         return;
       }
       if (data.access_token) {
-        clearToken();
-        await bindPendingSocialAccount(pendingSocialBinding
-          ? { ...pendingSocialBinding, ...(lockedInviteCode ? { inviteCode: lockedInviteCode } : {}) }
-          : null);
-        onUserLogin();
+        const isAdmin = data.is_admin === true && Boolean(data.admin_token);
+        if (!isAdmin) {
+          await bindPendingSocialAccount(pendingSocialBinding
+            ? { ...pendingSocialBinding, ...(lockedInviteCode ? { inviteCode: lockedInviteCode } : {}) }
+            : null);
+        }
+        onLogin(isAdmin);
         return;
       }
       notifyError('登录未返回有效的用户令牌');
@@ -274,57 +269,23 @@ function UnifiedLogin({ onAdminLogin, onUserLogin }: { onAdminLogin: () => void;
     }
   }
 
-  function switchMode(nextMode: LoginMode) {
-    setMode(nextMode);
-    setError('');
-    setTempToken('');
-    setTotpCode('');
-    setMaskedEmail('');
-  }
-
   return (
     <main className="login-shell">
-      <section className="login-panel dual-login-panel">
+      <section className="login-panel">
         <div className="login-panel-head">
           <div className="brand-mark">
-            {mode === 'user' ? <UserRound size={26} /> : <ShieldCheck size={26} />}
-          </div>
-          <div className="login-mode-toggle" aria-label="选择登录类型">
-            <button type="button" className={mode === 'user' ? 'is-active' : ''} onClick={() => switchMode('user')}>
-              <UserRound size={16} />
-              用户
-            </button>
-            <button type="button" className={mode === 'admin' ? 'is-active' : ''} onClick={() => switchMode('admin')}>
-              <ShieldCheck size={16} />
-              管理员
-            </button>
+            <UserRound size={26} />
           </div>
         </div>
-        <h1>{mode === 'user' ? '用户登录' : '管理员后台'}</h1>
-        <p>{mode === 'user' ? '使用 Sub2API 账号密码登录，进入你的专属页面。' : '管理员登录后可维护签到、兑换码和系统设置。'}</p>
-        {mode === 'user' && pendingSocialBinding && (
+        <h1>用户登录</h1>
+        <p>使用 Sub2API 账号密码登录，进入你的专属页面。</p>
+        {pendingSocialBinding && (
           <div className="social-bind-hint">
             登录后将绑定 {pendingSocialBinding.platform} 账号 {pendingSocialBinding.userId}
           </div>
         )}
         <form onSubmit={submit} className="login-form">
-          {mode === 'admin' ? (
-            <>
-              <label>
-                管理员账号
-                <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
-              </label>
-              <label>
-                管理员密码
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                />
-              </label>
-            </>
-          ) : tempToken ? (
+          {tempToken ? (
             <>
               <div className="success-line">已验证密码，请输入 {maskedEmail || '当前账号'} 的 2FA 验证码。</div>
               <label>
@@ -448,6 +409,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
 
   function logout() {
     clearUserSession();
+    clearToken();
     onLogout();
   }
 
@@ -653,6 +615,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </section>}
 
+      {checkInStatus?.enabled && (
       <section className="user-checkin-panel">
         <div>
           <span className="eyebrow">Daily Check-in</span>
@@ -723,7 +686,9 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           )}
         </div>
       </section>
+      )}
 
+      {invitation?.enabled && (
       <section className="user-invitation-panel">
         <div className="invitation-panel-head">
           <div>
@@ -847,7 +812,9 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
       </section>
+      )}
 
+      {rewards?.enabled && (
       <section className="user-info-panel recharge-reward-panel">
         <div className="settings-title">
           <CircleDollarSign size={18} />
@@ -916,6 +883,7 @@ function UserDashboard({ onLogout }: { onLogout: () => void }) {
           )}
         </div>
       </section>
+      )}
 
       {publicRateSeries.length > 0 && (
         <section className="user-info-panel">
@@ -1044,6 +1012,10 @@ function Dashboard({
   const [invitationRecordPage, setInvitationRecordPage] = useState(0);
   const [invitationRecordTotalPages, setInvitationRecordTotalPages] = useState(1);
   const [invitationRecordTotal, setInvitationRecordTotal] = useState(0);
+  const [checkInEnabled, setCheckInEnabled] = useState(true);
+  const [checkInEnabledDraft, setCheckInEnabledDraft] = useState(true);
+  const [rechargeEnabled, setRechargeEnabled] = useState(true);
+  const [rechargeEnabledDraft, setRechargeEnabledDraft] = useState(true);
   const [dailyMaxUsers, setDailyMaxUsers] = useState(0);
   const [dailyMaxUsersDraft, setDailyMaxUsersDraft] = useState('');
   const [dailyLimitMode, setDailyLimitMode] = useState<'shared' | 'separate'>('shared');
@@ -1084,9 +1056,11 @@ function Dashboard({
   const [groupRateEditingKey, setGroupRateEditingKey] = useState<string | null>(null);
   const [editingGroupRate, setEditingGroupRate] = useState<Sub2APIGroupRateGroup | null>(null);
   const [systemUpdate, setSystemUpdate] = useState<SystemUpdateCheck | null>(null);
+  const [systemUpdateStatus, setSystemUpdateStatus] = useState<SystemUpdateStatus | null>(null);
   const [systemUpdateChecking, setSystemUpdateChecking] = useState(false);
   const [systemUpdating, setSystemUpdating] = useState(false);
   const [systemUpdateOutput, setSystemUpdateOutput] = useState('');
+  const [systemTab, setSystemTab] = useState<'general' | 'telegram' | 'sub2api'>('general');
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -1121,6 +1095,12 @@ function Dashboard({
   }
 
   function applyCheckInSettings(settingsData: Awaited<ReturnType<typeof fetchCheckInSettings>>) {
+    const nextCheckInEnabled = settingsData.checkInEnabled !== false;
+    setCheckInEnabled(nextCheckInEnabled);
+    setCheckInEnabledDraft(nextCheckInEnabled);
+    const nextRechargeEnabled = settingsData.rechargeEnabled !== false;
+    setRechargeEnabled(nextRechargeEnabled);
+    setRechargeEnabledDraft(nextRechargeEnabled);
     setDailyMaxUsers(settingsData.dailyMaxUsers);
     setDailyMaxUsersDraft(String(settingsData.dailyMaxUsers));
     const nextLimitMode = settingsData.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1350,6 +1330,16 @@ function Dashboard({
     }
   }
 
+  async function loadSystemUpdateStatus(showError = false) {
+    try {
+      setSystemUpdateStatus(await fetchSystemUpdateStatus());
+    } catch (err) {
+      if (showError) {
+        notifyError(err instanceof Error ? err.message : '加载更新任务状态失败');
+      }
+    }
+  }
+
   async function updateSystemVersion() {
     if (!systemUpdate?.updateEnabled) {
       notifyError('当前部署未启用后台更新，请检查 SYSTEM_UPDATE_ENABLED 和内置更新脚本');
@@ -1367,7 +1357,8 @@ function Dashboard({
     try {
       const result = await runSystemUpdate();
       setSystemUpdateOutput(result.output || result.message);
-      notifySuccess(result.message || '更新命令已执行');
+      await loadSystemUpdateStatus(true);
+      notifySuccess(result.message || '更新任务已启动');
     } catch (err) {
       notifyError(err instanceof Error ? err.message : '执行更新失败');
     } finally {
@@ -1414,6 +1405,9 @@ function Dashboard({
     }
     if (activeSection === 'system') {
       checkSystemUpdate(false);
+      loadSystemUpdateStatus(false);
+      const timer = window.setInterval(() => loadSystemUpdateStatus(false), 3000);
+      return () => window.clearInterval(timer);
     }
   }, [activeSection]);
 
@@ -1449,6 +1443,10 @@ function Dashboard({
   }
 
   const hasSettingsChanges = settingsChanged(
+    checkInEnabled,
+    checkInEnabledDraft,
+    rechargeEnabled,
+    rechargeEnabledDraft,
     dailyMaxUsers,
     dailyMaxUsersDraft,
     dailyLimitMode,
@@ -1478,9 +1476,12 @@ function Dashboard({
     telegram,
     telegramDraft
   );
+  const systemUpdateInProgress = systemUpdateStatus?.status === 'STARTING' || systemUpdateStatus?.status === 'RUNNING';
+  const visibleSystemUpdateOutput = systemUpdateStatus?.output || systemUpdateOutput;
 
   function logout() {
     clearToken();
+    clearUserSession();
     onLogout();
   }
 
@@ -1544,6 +1545,7 @@ function Dashboard({
       return;
     }
     const parsedInvitation: InvitationSettings = {
+      enabled: invitationSettingsDraft.enabled,
       afterTime: invitationSettingsDraft.afterTime ? new Date(invitationSettingsDraft.afterTime).toISOString() : '',
       amount: invitationAmount
     };
@@ -1571,7 +1573,13 @@ function Dashboard({
         return;
       }
 
-      const settings = await updateCheckInSettings(nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), tokenUsageRankingEnabledDraft, parsedAdminSettings, parsedSub2API, parsedInvitation, parsedInvitationGuide, parsedTelegram);
+      const settings = await updateCheckInSettings(checkInEnabledDraft, rechargeEnabledDraft, nextDailyMaxUsers, dailyLimitModeDraft, nextDirectDailyMaxUsers, nextSocialDailyMaxUsers, parsedDirectPrizeTiers, parsedSocialPrizeTiers, groupLinkDraft.trim(), frontendPublicUrlDraft.trim().replace(/\/+$/, ''), tokenUsageRankingEnabledDraft, parsedAdminSettings, parsedSub2API, parsedInvitation, parsedInvitationGuide, parsedTelegram);
+      const savedCheckInEnabled = settings.checkInEnabled !== false;
+      setCheckInEnabled(savedCheckInEnabled);
+      setCheckInEnabledDraft(savedCheckInEnabled);
+      const savedRechargeEnabled = settings.rechargeEnabled !== false;
+      setRechargeEnabled(savedRechargeEnabled);
+      setRechargeEnabledDraft(savedRechargeEnabled);
       setDailyMaxUsers(settings.dailyMaxUsers);
       setDailyMaxUsersDraft(String(settings.dailyMaxUsers));
       const nextLimitMode = settings.dailyLimitMode === 'separate' ? 'separate' : 'shared';
@@ -1888,6 +1896,17 @@ function Dashboard({
             <span>签到设置</span>
           </div>
           <div className="checkin-actions">
+            <label className="toggle-row activity-toggle">
+              <input
+                type="checkbox"
+                checked={checkInEnabledDraft}
+                onChange={(event) => {
+                  setCheckInEnabledDraft(event.target.checked);
+                  setSettingsSaved(false);
+                }}
+              />
+              启用签到活动
+            </label>
             <label className="daily-limit-field daily-limit-mode-field">
               上限模式
               <select
@@ -1966,74 +1985,6 @@ function Dashboard({
             placeholder="https://..."
           />
         </label>
-
-        <div className="invitation-settings-editor">
-          <div className="settings-title">
-            <UserPlus size={18} />
-            <span>邀请奖励</span>
-          </div>
-          <div className="invitation-settings-grid">
-            <label>
-              新人账号创建时间必须晚于
-              <input
-                type="datetime-local"
-                value={invitationSettingsDraft.afterTime}
-                onChange={(event) => {
-                  setInvitationSettingsDraft((current) => ({ ...current, afterTime: event.target.value }));
-                  setSettingsSaved(false);
-                }}
-              />
-            </label>
-            <label>
-              每次成功邀请奖励余额
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={invitationSettingsDraft.amount}
-                onChange={(event) => {
-                  setInvitationSettingsDraft((current) => ({ ...current, amount: Number(event.target.value) }));
-                  setSettingsSaved(false);
-                }}
-              />
-            </label>
-          </div>
-          <p>只有通过群机器人链接完成社交账号绑定，且 Sub2API 账号创建时间严格晚于该门槛，邀请人才会获得奖励。</p>
-        </div>
-
-        <div className="invitation-settings-editor">
-          <div className="settings-title">
-            <UserPlus size={18} />
-            <span>QQ 邀请教程</span>
-          </div>
-          <div className="invitation-settings-grid">
-            <label>
-              QQ 群号
-              <input
-                value={invitationGuideDraft.qqGroupNumber}
-                maxLength={100}
-                onChange={(event) => {
-                  setInvitationGuideDraft((current) => ({ ...current, qqGroupNumber: event.target.value }));
-                  setSettingsSaved(false);
-                }}
-                placeholder="799128896"
-              />
-            </label>
-            <label>
-              QQ 机器人称呼
-              <input
-                value={invitationGuideDraft.qqBotMention}
-                maxLength={100}
-                onChange={(event) => {
-                  setInvitationGuideDraft((current) => ({ ...current, qqBotMention: event.target.value }));
-                  setSettingsSaved(false);
-                }}
-                placeholder="@咕咕嘎嘎"
-              />
-            </label>
-          </div>
-          <p>用户邀请教程会组合显示“机器人称呼 + 绑定 + 邀请码”。群链接继续使用上方配置。</p>
-        </div>
 
         <div className="checkin-tier-grid">
         <div className="tier-editor">
@@ -2375,6 +2326,101 @@ function Dashboard({
 
       {activeSection === 'invitations' && (
         <>
+          <form className="invitation-rule-panel" onSubmit={saveCheckInSettings}>
+            <div className="invitation-rule-head">
+              <div>
+                <div className="settings-title">
+                  <UserPlus size={18} />
+                  <span>邀请规则</span>
+                </div>
+                <p>配置奖励资格与 QQ 邀请指引。保存后会立即应用到新的邀请绑定。</p>
+              </div>
+              <div className="invitation-rule-actions">
+                <label className="toggle-row activity-toggle">
+                  <input
+                    type="checkbox"
+                    checked={invitationSettingsDraft.enabled}
+                    onChange={(event) => {
+                      setInvitationSettingsDraft((current) => ({ ...current, enabled: event.target.checked }));
+                      setSettingsSaved(false);
+                    }}
+                  />
+                  启用邀请活动
+                </label>
+                <span className={`invitation-status ${invitationSettingsDraft.enabled && invitationSettingsDraft.afterTime && Number(invitationSettingsDraft.amount) > 0 ? 'is-active' : ''}`}>
+                  {invitationSettingsDraft.enabled && invitationSettingsDraft.afterTime && Number(invitationSettingsDraft.amount) > 0 ? '奖励已启用' : '奖励未启用'}
+                </span>
+                <button className="ghost-btn" type="submit" disabled={settingsSaving || !hasSettingsChanges}>
+                  <CheckCircle2 size={17} />
+                  {settingsSaving ? '保存中...' : '保存规则'}
+                </button>
+                {settingsSaved && <span className="settings-saved">已保存</span>}
+              </div>
+            </div>
+            <div className="invitation-rule-grid">
+              <section className="invitation-rule-section">
+                <h2>奖励条件</h2>
+                <div className="invitation-settings-grid">
+                  <label>
+                    新用户注册时间限制
+                    <input
+                      type="datetime-local"
+                      value={invitationSettingsDraft.afterTime}
+                      onChange={(event) => {
+                        setInvitationSettingsDraft((current) => ({ ...current, afterTime: event.target.value }));
+                        setSettingsSaved(false);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    邀请人获得余额
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={invitationSettingsDraft.amount}
+                      onChange={(event) => {
+                        setInvitationSettingsDraft((current) => ({ ...current, amount: Number(event.target.value) }));
+                        setSettingsSaved(false);
+                      }}
+                      placeholder="例如 5.00"
+                    />
+                  </label>
+                </div>
+                <p>新用户账号创建时间必须严格晚于设定时间；关闭活动会隐藏用户端入口并停止发奖，但保留当前规则。</p>
+              </section>
+              <section className="invitation-rule-section">
+                <h2>QQ 邀请指引</h2>
+                <div className="invitation-settings-grid">
+                  <label>
+                    QQ 群号
+                    <input
+                      value={invitationGuideDraft.qqGroupNumber}
+                      maxLength={100}
+                      onChange={(event) => {
+                        setInvitationGuideDraft((current) => ({ ...current, qqGroupNumber: event.target.value }));
+                        setSettingsSaved(false);
+                      }}
+                      placeholder="799128896"
+                    />
+                  </label>
+                  <label>
+                    QQ 机器人称呼
+                    <input
+                      value={invitationGuideDraft.qqBotMention}
+                      maxLength={100}
+                      onChange={(event) => {
+                        setInvitationGuideDraft((current) => ({ ...current, qqBotMention: event.target.value }));
+                        setSettingsSaved(false);
+                      }}
+                      placeholder="@咕咕嘎嘎"
+                    />
+                  </label>
+                </div>
+                <p>用户端会将机器人称呼、绑定命令和专属邀请码组合为邀请步骤。</p>
+              </section>
+            </div>
+          </form>
           <InvitationTrendChart daily={invitationStats?.daily ?? []} />
           <section className="table-panel invitation-record-panel">
           <form
@@ -2480,12 +2526,27 @@ function Dashboard({
 
       {activeSection === 'recharge' && (
         <>
-          <section className="toolbar favorite-toolbar">
+          <form className="toolbar favorite-toolbar" onSubmit={saveCheckInSettings}>
             <div className="settings-title">
               <CircleDollarSign size={18} />
               <span>累计充值活动</span>
             </div>
+            <label className="toggle-row activity-toggle">
+              <input
+                type="checkbox"
+                checked={rechargeEnabledDraft}
+                onChange={(event) => {
+                  setRechargeEnabledDraft(event.target.checked);
+                  setSettingsSaved(false);
+                }}
+              />
+              启用累计充值活动
+            </label>
             <span />
+            <button className="ghost-btn" type="submit" disabled={settingsSaving || rechargeEnabled === rechargeEnabledDraft}>
+              <CheckCircle2 size={17} />
+              {settingsSaving ? '保存中...' : '保存开关'}
+            </button>
             <button
               className="ghost-btn"
               type="button"
@@ -2501,7 +2562,7 @@ function Dashboard({
               <CheckCircle2 size={17} />
               刷新
             </button>
-          </section>
+          </form>
           <section className="recharge-reward-stats">
             <article className="recharge-reward-total">
               <span>总返利金额</span>
@@ -3008,13 +3069,30 @@ function Dashboard({
               <Settings2 size={18} />
               <span>系统设置</span>
             </div>
-            <button className="ghost-btn" type="submit" disabled={settingsSaving || !hasSettingsChanges}>
-              <CheckCircle2 size={17} />
-              {settingsSaving ? '保存中...' : '保存'}
-            </button>
-            {settingsSaved && <span className="settings-saved">已保存</span>}
+            <div className="system-settings-actions">
+              <button className="ghost-btn" type="submit" disabled={settingsSaving || !hasSettingsChanges}>
+                <CheckCircle2 size={17} />
+                {settingsSaving ? '保存中...' : '保存'}
+              </button>
+              {settingsSaved && <span className="settings-saved">已保存</span>}
+            </div>
           </div>
 
+          <div className="system-tabbar" role="tablist" aria-label="系统设置分组">
+            <button type="button" role="tab" aria-selected={systemTab === 'general'} className={systemTab === 'general' ? 'is-active' : ''} onClick={() => setSystemTab('general')}>
+              通用设置
+            </button>
+            <button type="button" role="tab" aria-selected={systemTab === 'telegram'} className={systemTab === 'telegram' ? 'is-active' : ''} onClick={() => setSystemTab('telegram')}>
+              Telegram Bot
+              <span className={`system-tab-indicator ${telegramDraft.enabled && telegram.botTokenSet ? 'is-ready' : ''}`} />
+            </button>
+            <button type="button" role="tab" aria-selected={systemTab === 'sub2api'} className={systemTab === 'sub2api' ? 'is-active' : ''} onClick={() => setSystemTab('sub2api')}>
+              Sub2API
+            </button>
+          </div>
+
+          {systemTab === 'general' && (
+          <div className="system-tab-content" role="tabpanel">
           <div className="sub2api-editor standalone system-update-panel">
             <div className="tier-editor-head">
               <span>版本更新</span>
@@ -3033,10 +3111,10 @@ function Dashboard({
                   className="primary-btn"
                   type="button"
                   onClick={updateSystemVersion}
-                  disabled={systemUpdating || !systemUpdate?.updateAvailable || !systemUpdate?.updateEnabled}
+                  disabled={systemUpdating || systemUpdateInProgress || !systemUpdate?.updateAvailable || !systemUpdate?.updateEnabled}
                   title={systemUpdate?.updateEnabled ? '' : '当前部署未启用后台更新'}
                 >
-                  {systemUpdating ? '更新中...' : '立即更新'}
+                  {systemUpdating || systemUpdateInProgress ? '更新中...' : '立即更新'}
                 </button>
               </div>
             </div>
@@ -3064,8 +3142,25 @@ function Dashboard({
                 <span>Docker 部署默认自动启用；未启用时请检查 SYSTEM_UPDATE_ENABLED、项目目录挂载和 Docker Socket。</span>
               )}
             </div>
-            {systemUpdateOutput && (
-              <pre className="system-update-output">{systemUpdateOutput}</pre>
+            {systemUpdateStatus && systemUpdateStatus.status !== 'IDLE' && (
+              <div className={`system-update-task status-${systemUpdateStatus.status.toLowerCase()}`}>
+                <div>
+                  <span>任务状态</span>
+                  <strong>{systemUpdateStatus.status}</strong>
+                </div>
+                <div>
+                  <span>目标版本</span>
+                  <strong>{systemUpdateStatus.targetVersion || '-'}</strong>
+                </div>
+                <div>
+                  <span>开始时间</span>
+                  <strong>{formatOptionalDate(systemUpdateStatus.startedAt)}</strong>
+                </div>
+                <p>{systemUpdateStatus.message}</p>
+              </div>
+            )}
+            {visibleSystemUpdateOutput && (
+              <pre className="system-update-output">{visibleSystemUpdateOutput}</pre>
             )}
           </div>
 
@@ -3118,49 +3213,6 @@ function Dashboard({
             </div>
           </div>
 
-          <div className="sub2api-editor standalone invitation-system-panel">
-            <div className="tier-editor-head">
-              <div className="settings-title">
-                <UserPlus size={18} />
-                <span>邀请规则</span>
-              </div>
-              <span className={`invitation-status ${invitationSettingsDraft.afterTime && Number(invitationSettingsDraft.amount) > 0 ? 'is-active' : ''}`}>
-                {invitationSettingsDraft.afterTime && Number(invitationSettingsDraft.amount) > 0 ? '已启用' : '未启用'}
-              </span>
-            </div>
-            <div className="sub2api-grid invitation-system-grid">
-              <label>
-                新用户注册时间限制
-                <input
-                  type="datetime-local"
-                  value={invitationSettingsDraft.afterTime}
-                  onChange={(event) => {
-                    setInvitationSettingsDraft((current) => ({ ...current, afterTime: event.target.value }));
-                    setSettingsSaved(false);
-                  }}
-                />
-              </label>
-              <label>
-                邀请人获得余额
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={invitationSettingsDraft.amount}
-                  onChange={(event) => {
-                    setInvitationSettingsDraft((current) => ({ ...current, amount: Number(event.target.value) }));
-                    setSettingsSaved(false);
-                  }}
-                  placeholder="例如 5.00"
-                />
-              </label>
-            </div>
-            <div className="system-update-note invitation-rule-note">
-              <span>只有 Sub2API 账号创建时间严格晚于该时间，且通过群机器人链接完成绑定，邀请人才会获得余额。</span>
-              <span>时间和金额同时留空或设为 0 时，邀请奖励功能关闭。</span>
-            </div>
-          </div>
-
           <div className="sub2api-editor standalone">
             <div className="tier-editor-head">
               <span>后台管理员</span>
@@ -3192,6 +3244,11 @@ function Dashboard({
             </div>
           </div>
 
+          </div>
+          )}
+
+          {systemTab === 'telegram' && (
+          <div className="system-tab-content" role="tabpanel">
           <div className="sub2api-editor standalone telegram-editor">
             <div className="tier-editor-head">
               <div className="settings-title">
@@ -3325,7 +3382,11 @@ function Dashboard({
               <span>启用入群校验后，/start 邀请链接和 /bind 都会先检查群成员身份，通过后才签发短期绑定凭证。</span>
             </div>
           </div>
+          </div>
+          )}
 
+          {systemTab === 'sub2api' && (
+          <div className="system-tab-content" role="tabpanel">
           <div className="sub2api-editor standalone">
             <div className="tier-editor-head">
               <span>Sub2API 远程配置</span>
@@ -3386,6 +3447,8 @@ function Dashboard({
               </label>
             </div>
           </div>
+          </div>
+          )}
         </form>
       )}
 

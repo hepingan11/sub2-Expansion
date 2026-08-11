@@ -111,6 +111,7 @@ type CheckInRequest struct {
 }
 
 type CheckInResponse struct {
+	Enabled          bool        `json:"enabled"`
 	Success          bool        `json:"success"`
 	AlreadyCheckedIn bool        `json:"alreadyCheckedIn"`
 	UserID           *string     `json:"userId"`
@@ -152,6 +153,8 @@ type PrizeTier struct {
 }
 
 type CheckInSettingsResponse struct {
+	CheckInEnabled           bool                  `json:"checkInEnabled"`
+	RechargeEnabled          bool                  `json:"rechargeEnabled"`
 	DailyMaxUsers            int                   `json:"dailyMaxUsers"`
 	DailyLimitMode           string                `json:"dailyLimitMode"`
 	DirectDailyMaxUsers      int                   `json:"directDailyMaxUsers"`
@@ -170,6 +173,8 @@ type CheckInSettingsResponse struct {
 }
 
 type UpdateCheckInSettingsRequest struct {
+	CheckInEnabled           bool                  `json:"checkInEnabled"`
+	RechargeEnabled          bool                  `json:"rechargeEnabled"`
 	DailyMaxUsers            int                   `json:"dailyMaxUsers"`
 	DailyLimitMode           string                `json:"dailyLimitMode"`
 	DirectDailyMaxUsers      int                   `json:"directDailyMaxUsers"`
@@ -188,6 +193,7 @@ type UpdateCheckInSettingsRequest struct {
 }
 
 type InvitationConfig struct {
+	Enabled   bool   `json:"enabled"`
 	AfterTime string `json:"afterTime"`
 	Amount    Amount `json:"amount"`
 }
@@ -267,6 +273,7 @@ type RechargeRewardTierResponse struct {
 }
 
 type UserRechargeRewardsResponse struct {
+	Enabled        bool                           `json:"enabled"`
 	TotalRecharged Amount                         `json:"totalRecharged"`
 	Activities     []UserRechargeActivityResponse `json:"activities"`
 }

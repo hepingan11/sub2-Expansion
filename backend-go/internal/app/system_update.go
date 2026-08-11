@@ -1,18 +1,27 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	systemUpdateStatePath = "/opt/sub2-Expansion/logs/system-update.state"
+	systemUpdateLogPath   = "/opt/sub2-Expansion/logs/system-update.log"
+	systemUpdateMaxAge    = 15 * time.Minute
 )
 
 type SystemUpdateCheckResponse struct {
@@ -30,8 +39,20 @@ type SystemUpdateCheckResponse struct {
 
 type SystemUpdateRunResponse struct {
 	Started bool   `json:"started"`
+	TaskID  string `json:"taskId"`
 	Output  string `json:"output"`
 	Message string `json:"message"`
+}
+
+type SystemUpdateStatusResponse struct {
+	TaskID         string `json:"taskId"`
+	Status         string `json:"status"`
+	CurrentVersion string `json:"currentVersion"`
+	TargetVersion  string `json:"targetVersion"`
+	StartedAt      string `json:"startedAt"`
+	FinishedAt     string `json:"finishedAt"`
+	Message        string `json:"message"`
+	Output         string `json:"output"`
 }
 
 type githubLatestRelease struct {
@@ -52,6 +73,15 @@ func (app *App) getSystemUpdateCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (app *App) getSystemUpdateStatus(c *gin.Context) {
+	status, err := readSystemUpdateStatus()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
 func (app *App) runSystemUpdate(c *gin.Context) {
 	command := strings.TrimSpace(app.cfg.SystemUpdateCommand)
 	if command == "" {
@@ -67,6 +97,11 @@ func (app *App) runSystemUpdate(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if !updateInfo.UpdateAvailable {
+		conflict(c, "当前已是最新版本")
+		return
+	}
+	taskID := fmt.Sprintf("update-%d", time.Now().UnixNano())
 
 	cmd := shellCommand(ctx, command)
 	cmd.Env = append(cmd.Environ(),
@@ -74,12 +109,14 @@ func (app *App) runSystemUpdate(c *gin.Context) {
 		"LATEST_VERSION="+updateInfo.LatestVersion,
 		"RELEASE_URL="+updateInfo.ReleaseURL,
 		"GITHUB_REPOSITORY="+updateInfo.Repository,
+		"SYSTEM_UPDATE_TASK_ID="+taskID,
 	)
 	output, err := cmd.CombinedOutput()
 	limitedOutput := limitString(string(output), 12000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, SystemUpdateRunResponse{
 			Started: false,
+			TaskID:  taskID,
 			Output:  limitedOutput,
 			Message: fmt.Sprintf("update command failed: %v", err),
 		})
@@ -88,9 +125,84 @@ func (app *App) runSystemUpdate(c *gin.Context) {
 
 	c.JSON(http.StatusOK, SystemUpdateRunResponse{
 		Started: true,
+		TaskID:  taskID,
 		Output:  limitedOutput,
-		Message: "更新任务已启动，请稍后刷新页面查看版本",
+		Message: "更新任务已启动，系统会自动显示进度和结果",
 	})
+}
+
+func readSystemUpdateStatus() (SystemUpdateStatusResponse, error) {
+	return readSystemUpdateStatusFromPaths(systemUpdateStatePath, systemUpdateLogPath, time.Now())
+}
+
+func readSystemUpdateStatusFromPaths(statePath, logPath string, now time.Time) (SystemUpdateStatusResponse, error) {
+	response := SystemUpdateStatusResponse{
+		Status:  "IDLE",
+		Message: "暂无更新任务",
+	}
+	state, err := os.Open(filepath.Clean(statePath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return response, nil
+		}
+		return SystemUpdateStatusResponse{}, err
+	}
+	defer state.Close()
+
+	values := map[string]string{}
+	scanner := bufio.NewScanner(state)
+	for scanner.Scan() {
+		parts := strings.SplitN(scanner.Text(), "=", 2)
+		if len(parts) == 2 {
+			values[parts[0]] = parts[1]
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return SystemUpdateStatusResponse{}, err
+	}
+
+	response = SystemUpdateStatusResponse{
+		TaskID:         values["task_id"],
+		Status:         values["status"],
+		CurrentVersion: values["current_version"],
+		TargetVersion:  values["target_version"],
+		StartedAt:      values["started_at"],
+		FinishedAt:     values["finished_at"],
+		Message:        values["message"],
+	}
+	if response.Status == "" {
+		response.Status = "IDLE"
+	}
+	if response.Message == "" {
+		response.Message = "更新任务状态未知"
+	}
+	if (response.Status == "STARTING" || response.Status == "RUNNING") && systemUpdateIsStaleAt(response.StartedAt, now) {
+		response.Status = "FAILED"
+		response.Message = "更新任务超过 15 分钟未完成，请查看日志"
+	}
+	output, err := readFileTail(logPath, 12000)
+	if err != nil && !os.IsNotExist(err) {
+		return SystemUpdateStatusResponse{}, err
+	}
+	response.Output = output
+	return response, nil
+}
+
+func systemUpdateIsStale(startedAt string) bool {
+	return systemUpdateIsStaleAt(startedAt, time.Now())
+}
+
+func systemUpdateIsStaleAt(startedAt string, now time.Time) bool {
+	started, err := time.Parse(time.RFC3339, strings.TrimSpace(startedAt))
+	return err == nil && now.Sub(started) > systemUpdateMaxAge
+}
+
+func readFileTail(path string, limit int) (string, error) {
+	contents, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	return limitString(string(contents), limit), nil
 }
 
 func (app *App) checkLatestRelease(ctx context.Context) (SystemUpdateCheckResponse, error) {

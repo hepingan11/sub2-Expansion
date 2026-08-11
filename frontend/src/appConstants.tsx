@@ -73,6 +73,7 @@ export const emptyTelegramSettings: TelegramSettings = {
 };
 
 export const emptyInvitationSettings: InvitationSettings = {
+  enabled: true,
   afterTime: '',
   amount: 0
 };

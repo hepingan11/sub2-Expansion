@@ -14,7 +14,7 @@
 curl -fsSL https://raw.githubusercontent.com/hepingan11/sub2-Expansion/main/scripts/install.sh | sh
 ```
 
-脚本会拉取 GitHub 仓库、首次生成 `.env`，并执行 `docker compose up -d --build`。首次生成的后台密码会打印在终端里。
+脚本会拉取 GitHub 仓库、首次生成 `.env`，拉取发布镜像后以 `docker compose up -d --no-build` 启动。首次生成的后台密码会打印在终端里。
 
 如果当前目录没有写入权限，可以指定安装目录：
 
@@ -65,7 +65,7 @@ openssl rand -hex 32
 后台“系统设置”会通过 GitHub Releases 检测 `hepingan11/sub2-Expansion` 的 latest release。检测到新版本后：
 
 - Docker 部署会自动使用 `scripts/update.sh`，无需手工填写 `SYSTEM_UPDATE_COMMAND`，后台可以直接点击“立即更新”。
-- 更新命令会切换到 latest release tag，更新 `.env` 里的 `APP_VERSION`，再执行 `docker compose up -d --build`。
+- 更新命令会更新 `.env` 里的 `APP_VERSION`，拉取对应发布镜像，再执行 `docker compose up -d --no-build` 并等待健康检查。
 - 为了让后台容器执行 compose 更新，`backend` 服务会挂载项目目录和 `/var/run/docker.sock`。这等同于授予后台管理员主机 Docker 管理权限，只建议在可信管理员环境使用。
 
 如果不想允许后台执行更新，将 `.env` 里的 `SYSTEM_UPDATE_ENABLED` 设为 `false`。之后可以在服务器手动更新：
@@ -89,3 +89,21 @@ docker compose down
 ```
 
 PostgreSQL 数据保存在 `postgres_data` volume。`docker compose down` 会保留数据；`docker compose down -v` 会删除数据。
+
+## 发布镜像更新
+
+生产部署使用 GitHub Container Registry 的发布镜像，而不是在服务器构建源码。发布 `v*` 标签后，工作流会推送 `backend` 和 `frontend` 镜像；镜像需要设为 public，或在 `.env` 中配置可访问的 `BACKEND_IMAGE` 与 `FRONTEND_IMAGE`。
+
+后台更新会切换 `.env` 中的 `APP_VERSION`，拉取镜像并以 `--no-build` 重建服务，随后等待健康检查。任务状态和最近日志可直接在系统设置页面查看，日志文件是 `logs/system-update.log`。手动更新或回滚的命令如下：
+
+```bash
+# 将 APP_VERSION 改为 latest release 或目标回滚标签后执行
+docker compose pull backend frontend
+docker compose up -d --no-build
+```
+
+仅在本地开发且需要从当前源码构建时使用：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```

@@ -321,6 +321,10 @@ export function prizeTierTotal(drafts: { amount: string; probability: string }[]
 }
 
 export function settingsChanged(
+  checkInEnabled: boolean,
+  checkInEnabledDraft: boolean,
+  rechargeEnabled: boolean,
+  rechargeEnabledDraft: boolean,
   dailyMaxUsers: number,
   dailyMaxUsersDraft: string,
   dailyLimitMode: 'shared' | 'separate',
@@ -350,6 +354,9 @@ export function settingsChanged(
   telegram: TelegramSettings,
   telegramDraft: TelegramSettings
 ) {
+  if (checkInEnabledDraft !== checkInEnabled || rechargeEnabledDraft !== rechargeEnabled) {
+    return true;
+  }
   if (dailyMaxUsersDraft !== String(dailyMaxUsers)) {
     return true;
   }
@@ -383,7 +390,7 @@ export function settingsChanged(
   if ((adminDraft.password ?? '') !== '') {
     return true;
   }
-  if (invitation.afterTime !== invitationDraft.afterTime || Number(invitation.amount) !== Number(invitationDraft.amount)) {
+  if (invitation.enabled !== invitationDraft.enabled || invitation.afterTime !== invitationDraft.afterTime || Number(invitation.amount) !== Number(invitationDraft.amount)) {
     return true;
   }
   if (invitationGuide.qqGroupNumber !== invitationGuideDraft.qqGroupNumber || invitationGuide.qqBotMention !== invitationGuideDraft.qqBotMention) {

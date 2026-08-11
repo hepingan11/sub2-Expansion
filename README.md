@@ -84,9 +84,9 @@ REPO_URL="https://github.com/hepingan11/sub2-Expansion.git" BRANCH="main" HTTP_P
   sh /tmp/sub2-expansion-install.sh
 ```
 
-首次安装完成后，编辑 `<安装目录>/.env`，设置 `SUB2API_BASE_URL` 及相应的 Sub2API 管理认证信息；修改后执行 `docker compose up -d --build` 使配置生效。
+首次安装完成后，编辑 `<安装目录>/.env`，设置 `SUB2API_BASE_URL` 及相应的 Sub2API 管理认证信息；修改后执行 `docker compose pull backend frontend && docker compose up -d --no-build` 使配置生效。
 
-Docker 部署默认自动启用后台“一键更新”，无需手工填写 `SYSTEM_UPDATE_COMMAND`。更新由独立临时容器执行，日志写入 `logs/system-update.log`。该能力需要项目目录和 Docker Socket 挂载到后端容器，适合仅有可信管理员访问的环境；不需要时，将 `.env` 中的 `SYSTEM_UPDATE_ENABLED` 设为 `false` 后重新部署。
+Docker 部署默认自动启用后台“一键更新”，无需手工填写 `SYSTEM_UPDATE_COMMAND`。更新由独立临时容器拉取发布镜像、重建服务并验证健康状态，状态与日志写入 `logs/system-update.state`、`logs/system-update.log`。该能力需要项目目录和 Docker Socket 挂载到后端容器，适合仅有可信管理员访问的环境；不需要时，将 `.env` 中的 `SYSTEM_UPDATE_ENABLED` 设为 `false` 后重新部署。
 
 ### 手动安装
 
@@ -216,3 +216,24 @@ npm run build
 - `GET /api/admin/invitation-stats`
 
 完整的 Sub2API 管理与机器人操作说明见 [skills/sub2api-admin/SKILL.md](skills/sub2api-admin/SKILL.md)。
+
+## 发布镜像与更新
+
+发布 `v*` 标签会由 GitHub Actions 构建并推送两个 GHCR 镜像：`sub2-expansion-backend` 与 `sub2-expansion-frontend`。将 GitHub Packages 设为 public，或在 `.env` 中以 `BACKEND_IMAGE`、`FRONTEND_IMAGE` 覆盖为可访问的私有镜像仓库。
+
+生产环境默认使用发布镜像，不在服务器构建源码：
+
+```bash
+docker compose pull backend frontend
+docker compose up -d --no-build
+```
+
+后台“立即更新”会把 `.env` 的 `APP_VERSION` 切换到 latest release，拉取两个对应镜像，重建服务并等待健康检查。页面会持续显示 `STARTING`、`RUNNING`、`SUCCEEDED` 或 `FAILED`，日志位于 `logs/system-update.log`。
+
+手动回滚时，将 `.env` 中 `APP_VERSION` 设为目标发布标签，再执行同一组 `pull` 与 `up --no-build` 命令。
+
+本地源码构建使用开发覆盖文件：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```

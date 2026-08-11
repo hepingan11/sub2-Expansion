@@ -162,6 +162,15 @@ func (app *App) generateUserInvitationCode(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, APIError{Message: "Invalid user token"})
 		return
 	}
+	config, err := app.loadInvitationConfig()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	if !invitationConfigEnabled(config) {
+		conflict(c, "邀请活动尚未开启")
+		return
+	}
 	if _, err := app.ensureInvitationCode(user.ID); err != nil {
 		serverError(c, err)
 		return
@@ -182,7 +191,7 @@ func (app *App) userInvitationResponse(userID int64) (UserInvitationResponse, er
 	response := UserInvitationResponse{
 		RewardAmount: config.Amount,
 		AfterTime:    config.AfterTime,
-		Enabled:      config.AfterTime != "" && config.Amount.Cmp(decimal.Zero) > 0,
+		Enabled:      invitationConfigEnabled(config),
 		TotalReward:  MustAmount("0.00"),
 	}
 	var code InvitationCode
@@ -220,6 +229,10 @@ func (app *App) userInvitationResponse(userID int64) (UserInvitationResponse, er
 }
 
 func (app *App) userInvitationGuides(inviteCode string) (map[string]UserInvitationGuide, error) {
+	globalConfig, err := app.loadInvitationConfig()
+	if err != nil {
+		return nil, err
+	}
 	guideConfig, err := app.loadInvitationGuideConfig()
 	if err != nil {
 		return nil, err
@@ -253,7 +266,7 @@ func (app *App) userInvitationGuides(inviteCode string) (map[string]UserInvitati
 			BotMention:   guideConfig.QQBotMention,
 			RewardAmount: qqSettings.Invitation.Amount,
 			AfterTime:    qqSettings.Invitation.AfterTime,
-			Enabled:      qqSettings.Invitation.AfterTime != "" && qqSettings.Invitation.Amount.Cmp(decimal.Zero) > 0,
+			Enabled:      globalConfig.Enabled && invitationConfigEnabled(qqSettings.Invitation),
 		},
 		telegramPlatform: {
 			Platform:               telegramPlatform,
@@ -263,7 +276,7 @@ func (app *App) userInvitationGuides(inviteCode string) (map[string]UserInvitati
 			MembershipCheckEnabled: telegramConfig.MembershipCheckEnabled,
 			RewardAmount:           telegramSettings.Invitation.Amount,
 			AfterTime:              telegramSettings.Invitation.AfterTime,
-			Enabled:                telegramSettings.Invitation.AfterTime != "" && telegramSettings.Invitation.Amount.Cmp(decimal.Zero) > 0,
+			Enabled:                globalConfig.Enabled && invitationConfigEnabled(telegramSettings.Invitation),
 		},
 	}, nil
 }
@@ -326,11 +339,18 @@ func (app *App) bindInvitation(ctx context.Context, invitee sub2APIUserSnapshot,
 	if err != nil {
 		return InvitationBindingResult{}, businessConflict(err.Error())
 	}
+	globalConfig, err := app.loadInvitationConfig()
+	if err != nil {
+		return InvitationBindingResult{}, err
+	}
+	if !globalConfig.Enabled {
+		return InvitationBindingResult{}, businessConflict("邀请活动尚未开启")
+	}
 	config, err := app.invitationConfigForPlatform(platform)
 	if err != nil {
 		return InvitationBindingResult{}, err
 	}
-	if config.AfterTime == "" || config.Amount.Cmp(decimal.Zero) <= 0 {
+	if !invitationConfigEnabled(config) {
 		return InvitationBindingResult{}, businessConflict("邀请活动尚未启用")
 	}
 	afterTime, _ := time.Parse(time.RFC3339, config.AfterTime)
@@ -415,4 +435,8 @@ func (app *App) bindInvitation(ctx context.Context, invitee sub2APIUserSnapshot,
 		return InvitationBindingResult{}, err
 	}
 	return InvitationBindingResult{Bound: true, InviteCode: code.Code, RewardAmount: binding.RewardAmount, Message: "邀请绑定成功，奖励已发放给邀请人", InviterUserID: binding.InviterUserID}, nil
+}
+
+func invitationConfigEnabled(config InvitationConfig) bool {
+	return config.Enabled && config.AfterTime != "" && config.Amount.Cmp(decimal.Zero) > 0
 }

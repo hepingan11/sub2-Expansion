@@ -20,6 +20,7 @@ const (
 	checkInMethodSocial = "social"
 
 	dailyMaxUsersKey       = "check_in.daily_max_users"
+	checkInEnabledKey      = "check_in.enabled"
 	dailyLimitModeKey      = "check_in.daily_limit_mode"
 	directDailyMaxUsersKey = "check_in.direct_daily_max_users"
 	socialDailyMaxUsersKey = "check_in.social_daily_max_users"
@@ -28,6 +29,8 @@ const (
 	checkInGroupLinkKey    = "check_in.group_link"
 	invitationAfterTimeKey = "invitation.after_time"
 	invitationAmountKey    = "invitation.amount"
+	invitationEnabledKey   = "invitation.enabled"
+	rechargeEnabledKey     = "recharge.enabled"
 	invitationQQGroupKey   = "invitation.guide.qq_group"
 	invitationQQBotKey     = "invitation.guide.qq_bot_mention"
 	frontendPublicURLKey   = "app.frontend_public_url"

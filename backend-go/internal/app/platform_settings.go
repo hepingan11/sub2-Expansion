@@ -229,7 +229,7 @@ func (app *App) loadPlatformInvitationConfig(platform string, fallback Invitatio
 		}
 		amount = parsed
 	}
-	config, err := normalizeInvitationConfig(InvitationConfig{AfterTime: afterTime, Amount: amount})
+	config, err := normalizeInvitationConfig(InvitationConfig{Enabled: fallback.Enabled, AfterTime: afterTime, Amount: amount})
 	return config, true, err
 }
 

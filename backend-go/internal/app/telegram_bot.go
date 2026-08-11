@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -433,21 +432,20 @@ func (app *App) telegramInvite(ctx context.Context, telegramUserID int64, botUse
 		}
 		return "", err
 	}
-	code, err := app.ensureInvitationCode(binding.UserID)
+	config, err := app.invitationConfigForPlatform(telegramPlatform)
 	if err != nil {
 		return "", err
 	}
-	config, err := app.invitationConfigForPlatform(telegramPlatform)
+	if !invitationConfigEnabled(config) {
+		return "当前邀请活动尚未开启。", nil
+	}
+	code, err := app.ensureInvitationCode(binding.UserID)
 	if err != nil {
 		return "", err
 	}
 	link := ""
 	if strings.TrimSpace(botUsername) != "" {
 		link = fmt.Sprintf("\n邀请链接：https://t.me/%s?start=%s", botUsername, code.Code)
-	}
-	enabled := config.AfterTime != "" && config.Amount.Cmp(decimal.Zero) > 0
-	if !enabled {
-		return "你的邀请码：" + code.Code + link + "\n当前邀请奖励尚未启用。", nil
 	}
 	return fmt.Sprintf("你的邀请码：%s%s\nTelegram 邀请奖励：%s\n新人账号需晚于：%s", code.Code, link, config.Amount.StringFixed(2), config.AfterTime), nil
 }

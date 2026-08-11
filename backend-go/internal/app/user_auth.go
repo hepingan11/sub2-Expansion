@@ -39,6 +39,8 @@ type Sub2APIUserLoginData struct {
 	Requires2FA     bool            `json:"requires_2fa,omitempty"`
 	TempToken       string          `json:"temp_token,omitempty"`
 	UserEmailMasked string          `json:"user_email_masked,omitempty"`
+	AdminToken      string          `json:"admin_token,omitempty"`
+	IsAdmin         bool            `json:"is_admin"`
 }
 
 type Sub2APIUserRefreshData struct {
@@ -79,6 +81,7 @@ func (app *App) userLogin(c *gin.Context) {
 		respondSub2APIError(c, err)
 		return
 	}
+	app.attachAdminSession(&result)
 	c.JSON(http.StatusOK, result)
 }
 
@@ -99,7 +102,31 @@ func (app *App) userLogin2FA(c *gin.Context) {
 		respondSub2APIError(c, err)
 		return
 	}
+	app.attachAdminSession(&result)
 	c.JSON(http.StatusOK, result)
+}
+
+func (app *App) attachAdminSession(result *Sub2APIUserLoginData) {
+	if result == nil || strings.TrimSpace(result.AccessToken) == "" {
+		return
+	}
+	var profile struct {
+		Email    string `json:"email"`
+		Username string `json:"username"`
+		Role     string `json:"role"`
+	}
+	if err := json.Unmarshal(result.User, &profile); err != nil || strings.ToLower(strings.TrimSpace(profile.Role)) != "admin" {
+		return
+	}
+	identity := strings.TrimSpace(profile.Email)
+	if identity == "" {
+		identity = strings.TrimSpace(profile.Username)
+	}
+	if identity == "" {
+		identity = "sub2api-admin"
+	}
+	result.IsAdmin = true
+	result.AdminToken = app.issueToken(identity)
 }
 
 func (app *App) refreshUserToken(c *gin.Context) {

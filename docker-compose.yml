@@ -19,11 +19,7 @@ services:
       start_period: 10s
 
   backend:
-    build:
-      context: ./backend-go
-      args:
-        APP_VERSION: ${APP_VERSION:-v0.2}
-    image: sub2-expansion-backend:latest
+    image: ${BACKEND_IMAGE:-ghcr.io/hepingan11/sub2-expansion-backend}:${APP_VERSION:-v0.2.2}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -69,11 +65,7 @@ services:
       start_period: 20s
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_BASE: ${VITE_API_BASE:-}
-    image: sub2-expansion-frontend:latest
+    image: ${FRONTEND_IMAGE:-ghcr.io/hepingan11/sub2-expansion-frontend}:${APP_VERSION:-v0.2.2}
     restart: unless-stopped
     depends_on:
       backend:
