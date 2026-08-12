@@ -147,8 +147,11 @@ func TestNormalizeVideoAccountPoolTestRequest(t *testing.T) {
 	if _, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "bad model", Prompt: "x", Duration: 6, AspectRatio: "16:9", Resolution: "480p"}); err == nil {
 		t.Fatal("expected invalid model to be rejected")
 	}
-	if _, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "seedance-2.0", Prompt: "x", Duration: 8, AspectRatio: "16:9", Resolution: "480p"}); err == nil {
-		t.Fatal("expected invalid duration to be rejected")
+	if _, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "seedance-2.0", Prompt: "x", Duration: 4, AspectRatio: "16:9", Resolution: "480p"}); err == nil {
+		t.Fatal("expected duration below 5 seconds to be rejected")
+	}
+	if params, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "seedance-2.0", Prompt: "x", Duration: 8, AspectRatio: "1:1", Resolution: "480p"}); err != nil || params.Duration != 8 || params.AspectRatio != "1:1" {
+		t.Fatalf("expected custom duration and aspect ratio to be accepted: %#v, %v", params, err)
 	}
 }
 

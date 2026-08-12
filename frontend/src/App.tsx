@@ -304,7 +304,8 @@ function UnifiedLogin({ onLogin }: { onLogin: (isAdmin: boolean) => void }) {
               <label>
                 Sub2API 邮箱
                 <input
-                  type="email"
+                  type="text"
+                  name="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   autoComplete="email"
@@ -4144,17 +4145,26 @@ function VideoAccountPoolTestModal({
         <div className="modal-grid three video-test-options">
           <label>
             时长
-            <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as VideoAccountPoolTestPayload['duration'])}>
-              <option value={6}>6 秒</option>
-              <option value={10}>10 秒</option>
-              <option value={15}>15 秒</option>
-            </select>
+            <div className="input-with-suffix">
+              <input
+                type="number"
+                min={5}
+                step={1}
+                value={duration}
+                onChange={(event) => setDuration(Number(event.target.value))}
+                required
+              />
+              <span>秒</span>
+            </div>
           </label>
           <label>
             比例
             <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as VideoAccountPoolTestPayload['aspectRatio'])}>
               <option value="16:9">16:9</option>
               <option value="9:16">9:16</option>
+              <option value="1:1">1:1</option>
+              <option value="4:3">4:3</option>
+              <option value="3:4">3:4</option>
             </select>
           </label>
           <label>

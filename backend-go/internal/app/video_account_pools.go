@@ -258,11 +258,11 @@ func normalizeVideoAccountPoolTestRequest(req VideoAccountPoolTestRequest) (Vide
 	if len([]rune(prompt)) == 0 || len([]rune(prompt)) > 4096 {
 		return VideoAccountPoolTestRequest{}, errors.New("提示词不能为空且不能超过 4096 个字符")
 	}
-	if duration != 6 && duration != 10 && duration != 15 {
-		return VideoAccountPoolTestRequest{}, errors.New("时长仅支持 6、10 或 15 秒")
+	if duration < 5 {
+		return VideoAccountPoolTestRequest{}, errors.New("时长不能小于 5 秒")
 	}
-	if aspectRatio != "16:9" && aspectRatio != "9:16" {
-		return VideoAccountPoolTestRequest{}, errors.New("比例仅支持 16:9 或 9:16")
+	if aspectRatio != "16:9" && aspectRatio != "9:16" && aspectRatio != "1:1" && aspectRatio != "4:3" && aspectRatio != "3:4" {
+		return VideoAccountPoolTestRequest{}, errors.New("比例仅支持 16:9、9:16、1:1、4:3 或 3:4")
 	}
 	if resolution != "480p" && resolution != "720p" {
 		return VideoAccountPoolTestRequest{}, errors.New("分辨率仅支持 480p 或 720p")

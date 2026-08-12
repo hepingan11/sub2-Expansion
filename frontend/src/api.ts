@@ -132,8 +132,8 @@ export interface VideoAccountPoolTestPayload {
   prompt: string;
   images: string[];
   videoUrl: string;
-  duration: 6 | 10 | 15;
-  aspectRatio: '16:9' | '9:16';
+  duration: number;
+  aspectRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
   resolution: '480p' | '720p';
 }
 
