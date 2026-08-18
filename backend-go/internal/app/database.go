@@ -136,6 +136,7 @@ func (app *App) migrate() error {
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
 		`ALTER TABLE video_account_pools ADD COLUMN IF NOT EXISTS base_url_is_complete BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE video_account_pools ADD COLUMN IF NOT EXISTS models_json TEXT NOT NULL DEFAULT '[]'`,
 		`CREATE INDEX IF NOT EXISTS idx_video_account_pools_enabled ON video_account_pools (enabled, id)`,
 		`CREATE TABLE IF NOT EXISTS recharge_activities (
 			id BIGSERIAL PRIMARY KEY,

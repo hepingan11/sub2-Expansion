@@ -111,6 +111,7 @@ import {
   refreshSub2APIGroupRates,
   runSystemUpdate,
   startVideoAccountPoolTest,
+  syncVideoAccountPoolModels,
   UserRechargeRewards,
   UserTokenUsageRanking,
   userCheckIn,
@@ -3517,6 +3518,9 @@ function Dashboard({
             setEditingVideoPool(null);
             loadVideoPools();
           }}
+          onModelsSynced={(updatedPool) => {
+            setVideoPools((current) => current.map((pool) => pool.id === updatedPool.id ? updatedPool : pool));
+          }}
         />
       )}
 
@@ -4096,20 +4100,23 @@ function VideoAccountPoolTestModal({
   onClose: () => void;
   onStart: (payload: VideoAccountPoolTestPayload) => void;
 }) {
-  const [model, setModel] = useState('seedance-2.0');
+  const customModelOption = '';
+  const [selectedModel, setSelectedModel] = useState(pool.models[0] ?? customModelOption);
+  const [customModel, setCustomModel] = useState('seedance-2.0');
   const [prompt, setPrompt] = useState('A calm ocean wave at sunrise.');
   const [images, setImages] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [duration, setDuration] = useState<VideoAccountPoolTestPayload['duration']>(6);
   const [aspectRatio, setAspectRatio] = useState<VideoAccountPoolTestPayload['aspectRatio']>('16:9');
-  const [resolution, setResolution] = useState<VideoAccountPoolTestPayload['resolution']>('480p');
+  const [resolution, setResolution] = useState(480);
+  const resolvedModel = selectedModel === customModelOption ? customModel : selectedModel;
 
   function submit(event: FormEvent) {
     event.preventDefault();
     onStart({
-      model: model.trim(), prompt: prompt.trim(),
+      model: resolvedModel.trim(), prompt: prompt.trim(),
       images: images.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
-      videoUrl: videoUrl.trim(), duration, aspectRatio, resolution
+      videoUrl: videoUrl.trim(), duration, aspectRatio, resolution: `${resolution}p`
     });
   }
 
@@ -4127,7 +4134,15 @@ function VideoAccountPoolTestModal({
         </div>
         <label>
           模型 ID
-          <input value={model} onChange={(event) => setModel(event.target.value)} maxLength={100} required />
+          {pool.models.length > 0 && (
+            <select value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}>
+              {pool.models.map((item) => <option key={item} value={item}>{item}</option>)}
+              <option value={customModelOption}>手动输入模型 ID</option>
+            </select>
+          )}
+          {(pool.models.length === 0 || selectedModel === customModelOption) && (
+            <input value={customModel} onChange={(event) => setCustomModel(event.target.value)} maxLength={100} required />
+          )}
         </label>
         <label>
           提示词
@@ -4169,16 +4184,23 @@ function VideoAccountPoolTestModal({
           </label>
           <label>
             分辨率
-            <select value={resolution} onChange={(event) => setResolution(event.target.value as VideoAccountPoolTestPayload['resolution'])}>
-              <option value="480p">480p</option>
-              <option value="720p">720p</option>
-            </select>
+            <div className="input-with-suffix">
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={resolution}
+                onChange={(event) => setResolution(Number(event.target.value))}
+                required
+              />
+              <span>p</span>
+            </div>
           </label>
         </div>
         <div className="video-test-note">素材必须是调用方可公开访问的 HTTP/HTTPS 直链；图片与视频素材不能同时填写。</div>
         <div className="modal-actions">
           <button className="ghost-btn" type="button" onClick={onClose}>取消</button>
-          <button className="primary-btn" type="submit" disabled={!model.trim() || !prompt.trim()}>
+          <button className="primary-btn" type="submit" disabled={!resolvedModel.trim() || !prompt.trim()}>
             <FlaskConical size={17} />
             开始测试
           </button>
@@ -4192,12 +4214,14 @@ function VideoAccountPoolModal({
   pool,
   onClose,
   onSaved,
-  onDeleted
+  onDeleted,
+  onModelsSynced
 }: {
   pool: VideoAccountPool | null;
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
+  onModelsSynced: (pool: VideoAccountPool) => void;
 }) {
   const [form, setForm] = useState<VideoAccountPoolPayload>({
     name: pool?.name ?? '',
@@ -4206,10 +4230,12 @@ function VideoAccountPoolModal({
     baseUrlIsComplete: pool?.baseUrlIsComplete ?? false,
     apiKey: '',
     clearApiKey: false,
+    models: pool?.models ?? [],
     enabled: pool?.enabled ?? true
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [syncingModels, setSyncingModels] = useState(false);
 
   function patch<K extends keyof VideoAccountPoolPayload>(key: K, value: VideoAccountPoolPayload[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -4257,6 +4283,21 @@ function VideoAccountPoolModal({
       notifyError(err instanceof Error ? err.message : '删除视频上游失败');
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function syncModels() {
+    if (!pool) return;
+    setSyncingModels(true);
+    try {
+      const updatedPool = await syncVideoAccountPoolModels(pool.id);
+      patch('models', updatedPool.models);
+      onModelsSynced(updatedPool);
+      notifySuccess(`已同步 ${updatedPool.models.length} 个上游模型`);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '同步上游模型失败');
+    } finally {
+      setSyncingModels(false);
     }
   }
 
@@ -4330,6 +4371,30 @@ function VideoAccountPoolModal({
             />
             清除已保存的 API Key
           </label>
+        )}
+        {pool && (
+          <section className="video-model-sync" aria-label="上游模型">
+            <div className="video-model-sync-head">
+              <div>
+                <span>上游模型</span>
+                <small>{form.models.length > 0 ? `已保存 ${form.models.length} 个` : '尚未添加'}</small>
+              </div>
+              <button className="ghost-btn" type="button" onClick={syncModels} disabled={saving || deleting || syncingModels || form.clearApiKey}>
+                <RefreshCw size={16} className={syncingModels ? 'is-spinning' : ''} />
+                {syncingModels ? '同步中...' : '同步模型'}
+              </button>
+            </div>
+            <label className="video-model-editor">
+              模型列表（每行一个）
+              <textarea
+                className="compact-textarea"
+                value={form.models.join('\n')}
+                onChange={(event) => patch('models', event.target.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))}
+                rows={4}
+                placeholder="seedance-2.0\nwan/v2.1"
+              />
+            </label>
+          </section>
         )}
         <label className="toggle-row">
           <input type="checkbox" checked={form.enabled} onChange={(event) => patch('enabled', event.target.checked)} />

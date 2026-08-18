@@ -2283,6 +2283,53 @@ textarea {
   font-size: 13px;
 }
 
+.video-model-sync {
+  display: grid;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f8f7;
+}
+
+.video-model-sync-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.video-model-sync-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.video-model-sync-head span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.video-model-sync-head small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.video-model-editor {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.video-model-editor textarea {
+  min-height: 96px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .video-test-detail-row td {
   padding-top: 0;
   background: #fafbfa;

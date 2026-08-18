@@ -28,6 +28,7 @@ const (
 
 var videoTaskIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)
 var videoModelPattern = regexp.MustCompile(`^[A-Za-z0-9_./:-]{1,100}$`)
+var videoResolutionPattern = regexp.MustCompile(`^[1-9][0-9]{0,5}p$`)
 
 var videoPoolHTTPClient = newVideoPoolHTTPClient()
 
@@ -73,6 +74,12 @@ type videoUpstreamErrorResponse struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+type openAIModelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
 }
 
 func (app *App) listVideoAccountPools(c *gin.Context) {
@@ -123,6 +130,7 @@ func (app *App) updateVideoAccountPool(c *gin.Context) {
 	pool.Format = normalized.Format
 	pool.BaseURL = normalized.BaseURL
 	pool.BaseURLIsComplete = normalized.BaseURLIsComplete
+	pool.ModelsJSON = normalized.ModelsJSON
 	pool.Enabled = normalized.Enabled
 	if req.ClearAPIKey {
 		pool.APIKey = ""
@@ -150,6 +158,29 @@ func (app *App) deleteVideoAccountPool(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (app *App) syncVideoAccountPoolModels(c *gin.Context) {
+	pool, ok := app.findVideoAccountPool(c)
+	if !ok {
+		return
+	}
+	models, err := fetchVideoAccountPoolModels(c.Request.Context(), pool)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, APIError{Message: err.Error()})
+		return
+	}
+	rawModels, err := json.Marshal(models)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	pool.ModelsJSON = string(rawModels)
+	if err := app.db.Model(&pool).Update("models_json", pool.ModelsJSON).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, videoAccountPoolResponse(pool))
 }
 
 func (app *App) startVideoAccountPoolTest(c *gin.Context) {
@@ -264,8 +295,8 @@ func normalizeVideoAccountPoolTestRequest(req VideoAccountPoolTestRequest) (Vide
 	if aspectRatio != "16:9" && aspectRatio != "9:16" && aspectRatio != "1:1" && aspectRatio != "4:3" && aspectRatio != "3:4" {
 		return VideoAccountPoolTestRequest{}, errors.New("比例仅支持 16:9、9:16、1:1、4:3 或 3:4")
 	}
-	if resolution != "480p" && resolution != "720p" {
-		return VideoAccountPoolTestRequest{}, errors.New("分辨率仅支持 480p 或 720p")
+	if !videoResolutionPattern.MatchString(resolution) {
+		return VideoAccountPoolTestRequest{}, errors.New("分辨率必须是以 p 结尾的正整数，例如 1080p")
 	}
 	return VideoAccountPoolTestRequest{Model: model, Prompt: prompt, Images: images, VideoURL: videoURL, Duration: duration, AspectRatio: aspectRatio, Resolution: resolution}, nil
 }
@@ -275,6 +306,59 @@ func queryVideoAccountPoolTest(ctx context.Context, pool VideoAccountPool, taskI
 		return VideoAccountPoolTestResponse{}, errors.New("视频任务 ID 无效")
 	}
 	return requestVideoAccountPoolTest(ctx, pool, http.MethodGet, "/"+url.PathEscape(taskID), nil)
+}
+
+func fetchVideoAccountPoolModels(ctx context.Context, pool VideoAccountPool) ([]string, error) {
+	if pool.Format != videoPoolFormatOpenAIVideos {
+		return nil, errors.New("该号池格式暂不支持模型同步")
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(pool.BaseURL), "/")
+	if _, err := normalizeVideoAccountPoolRequest(VideoAccountPoolRequest{
+		Name: pool.Name, Format: pool.Format, BaseURL: baseURL, BaseURLIsComplete: pool.BaseURLIsComplete, APIKey: pool.APIKey,
+	}, false); err != nil {
+		return nil, fmt.Errorf("号池配置无效：%w", err)
+	}
+	apiKey := strings.TrimSpace(pool.APIKey)
+	if apiKey == "" {
+		return nil, errors.New("号池尚未设置 API Key")
+	}
+
+	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, videoAccountPoolModelsURL(pool), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	statusCode, respBody, err := doVideoPoolHTTPRequestWithLimit(req, 8<<20)
+	if err != nil {
+		return nil, fmt.Errorf("请求视频上游失败：%w", err)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return nil, parseVideoUpstreamError(statusCode, respBody)
+	}
+	var upstream openAIModelsResponse
+	if err := json.Unmarshal(respBody, &upstream); err != nil {
+		return nil, errors.New("视频上游返回了无效的模型列表 JSON")
+	}
+	models := make([]string, 0, len(upstream.Data))
+	seen := make(map[string]struct{}, len(upstream.Data))
+	for _, item := range upstream.Data {
+		model := strings.TrimSpace(item.ID)
+		if !videoModelPattern.MatchString(model) {
+			continue
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+		if len(models) == 500 {
+			break
+		}
+	}
+	return models, nil
 }
 
 func requestVideoAccountPoolTest(ctx context.Context, pool VideoAccountPool, method, path string, payload any) (VideoAccountPoolTestResponse, error) {
@@ -326,6 +410,10 @@ func requestVideoAccountPoolTest(ctx context.Context, pool VideoAccountPool, met
 }
 
 func doVideoPoolHTTPRequest(req *http.Request) (int, []byte, error) {
+	return doVideoPoolHTTPRequestWithLimit(req, 2<<20)
+}
+
+func doVideoPoolHTTPRequestWithLimit(req *http.Request, maxResponseBytes int64) (int, []byte, error) {
 	attempts := 1
 	if req.Method == http.MethodGet {
 		attempts = 3
@@ -334,8 +422,11 @@ func doVideoPoolHTTPRequest(req *http.Request) (int, []byte, error) {
 	for attempt := 0; attempt < attempts; attempt++ {
 		resp, err := videoPoolHTTPClient.Do(req.Clone(req.Context()))
 		if err == nil {
-			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 			_ = resp.Body.Close()
+			if len(respBody) > int(maxResponseBytes) {
+				return 0, nil, fmt.Errorf("视频上游响应超过 %d MiB", maxResponseBytes>>20)
+			}
 			if readErr == nil {
 				return resp.StatusCode, respBody, nil
 			}
@@ -452,6 +543,14 @@ func normalizeVideoAccountPoolRequest(req VideoAccountPoolRequest, creating bool
 	format := strings.ToLower(strings.TrimSpace(req.Format))
 	baseURL := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
 	apiKey := strings.TrimSpace(req.APIKey)
+	models, err := normalizeVideoAccountPoolModels(req.Models)
+	if err != nil {
+		return VideoAccountPool{}, err
+	}
+	modelsJSON, err := json.Marshal(models)
+	if err != nil {
+		return VideoAccountPool{}, err
+	}
 	if name == "" {
 		return VideoAccountPool{}, errors.New("号池名称不能为空")
 	}
@@ -480,7 +579,30 @@ func normalizeVideoAccountPoolRequest(req VideoAccountPoolRequest, creating bool
 	if req.Enabled && creating && apiKey == "" {
 		return VideoAccountPool{}, errors.New("启用号池前必须设置 API Key")
 	}
-	return VideoAccountPool{Name: name, Format: format, BaseURL: baseURL, BaseURLIsComplete: req.BaseURLIsComplete, APIKey: apiKey, Enabled: req.Enabled}, nil
+	return VideoAccountPool{Name: name, Format: format, BaseURL: baseURL, BaseURLIsComplete: req.BaseURLIsComplete, APIKey: apiKey, ModelsJSON: string(modelsJSON), Enabled: req.Enabled}, nil
+}
+
+func normalizeVideoAccountPoolModels(values []string) ([]string, error) {
+	models := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		model := strings.TrimSpace(value)
+		if model == "" {
+			continue
+		}
+		if !videoModelPattern.MatchString(model) {
+			return nil, errors.New("模型 ID 只能包含字母、数字、下划线、点、斜线、冒号或短横线")
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+		if len(models) > 500 {
+			return nil, errors.New("模型列表最多支持 500 个模型")
+		}
+	}
+	return models, nil
 }
 
 func videoAccountPoolVideosURL(pool VideoAccountPool) string {
@@ -491,10 +613,32 @@ func videoAccountPoolVideosURL(pool VideoAccountPool) string {
 	return baseURL + "/v1/videos"
 }
 
+func videoAccountPoolModelsURL(pool VideoAccountPool) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(pool.BaseURL), "/")
+	parsed, err := url.Parse(baseURL)
+	if err == nil {
+		if strings.HasSuffix(parsed.Path, "/videos") {
+			parsed.Path = strings.TrimSuffix(parsed.Path, "/videos") + "/models"
+			return parsed.String()
+		}
+		if strings.HasSuffix(parsed.Path, "/v1") {
+			return parsed.String() + "/models"
+		}
+	}
+	if pool.BaseURLIsComplete {
+		return baseURL + "/models"
+	}
+	return baseURL + "/v1/models"
+}
+
 func videoAccountPoolResponse(pool VideoAccountPool) VideoAccountPoolResponse {
+	models := make([]string, 0)
+	if strings.TrimSpace(pool.ModelsJSON) != "" {
+		_ = json.Unmarshal([]byte(pool.ModelsJSON), &models)
+	}
 	return VideoAccountPoolResponse{
 		ID: pool.ID, Name: pool.Name, Format: pool.Format, BaseURL: pool.BaseURL, BaseURLIsComplete: pool.BaseURLIsComplete,
-		APIKeySet: strings.TrimSpace(pool.APIKey) != "", Enabled: pool.Enabled,
+		APIKeySet: strings.TrimSpace(pool.APIKey) != "", Models: models, Enabled: pool.Enabled,
 		CreatedAt: pool.CreatedAt, UpdatedAt: pool.UpdatedAt,
 	}
 }

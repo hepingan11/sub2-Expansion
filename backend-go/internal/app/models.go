@@ -180,6 +180,7 @@ type VideoAccountPool struct {
 	BaseURL           string   `gorm:"column:base_url;size:500;not null"`
 	BaseURLIsComplete bool     `gorm:"column:base_url_is_complete;not null;default:false"`
 	APIKey            string   `gorm:"column:api_key;type:text;not null"`
+	ModelsJSON        string   `gorm:"column:models_json;type:text;not null;default:'[]'"`
 	Enabled           bool     `gorm:"column:enabled;not null;default:true"`
 	CreatedAt         JSONTime `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt         JSONTime `gorm:"column:updated_at;autoUpdateTime"`

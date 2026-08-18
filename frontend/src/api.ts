@@ -95,6 +95,7 @@ export interface VideoAccountPool {
   baseUrl: string;
   baseUrlIsComplete: boolean;
   apiKeySet: boolean;
+  models: string[];
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -107,6 +108,7 @@ export interface VideoAccountPoolPayload {
   baseUrlIsComplete: boolean;
   apiKey: string;
   clearApiKey: boolean;
+  models: string[];
   enabled: boolean;
 }
 
@@ -134,7 +136,7 @@ export interface VideoAccountPoolTestPayload {
   videoUrl: string;
   duration: number;
   aspectRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
-  resolution: '480p' | '720p';
+  resolution: string;
 }
 
 export interface CheckInSettings {
@@ -789,6 +791,12 @@ export async function updateVideoAccountPool(id: number, payload: VideoAccountPo
 
 export async function deleteVideoAccountPool(id: number) {
   return request<void>(`/api/admin/video-account-pools/${id}`, { method: 'DELETE' });
+}
+
+export async function syncVideoAccountPoolModels(id: number) {
+  return request<VideoAccountPool>(`/api/admin/video-account-pools/${id}/models/sync`, {
+    method: 'POST'
+  });
 }
 
 export async function startVideoAccountPoolTest(id: number, payload: VideoAccountPoolTestPayload) {

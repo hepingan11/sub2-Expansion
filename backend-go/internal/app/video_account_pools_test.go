@@ -28,6 +28,19 @@ func TestNormalizeVideoAccountPoolRequest(t *testing.T) {
 	}
 }
 
+func TestNormalizeVideoAccountPoolModels(t *testing.T) {
+	models, err := normalizeVideoAccountPoolModels([]string{" seedance-2.0 ", "", "wan/v2.1", "seedance-2.0"})
+	if err != nil {
+		t.Fatalf("normalizeVideoAccountPoolModels() error = %v", err)
+	}
+	if strings.Join(models, ",") != "seedance-2.0,wan/v2.1" {
+		t.Fatalf("unexpected models: %#v", models)
+	}
+	if _, err := normalizeVideoAccountPoolModels([]string{"invalid model"}); err == nil {
+		t.Fatal("expected invalid model ID to be rejected")
+	}
+}
+
 func TestVideoAccountPoolVideosURL(t *testing.T) {
 	basePool := VideoAccountPool{BaseURL: "https://video.example.com/"}
 	if got := videoAccountPoolVideosURL(basePool); got != "https://video.example.com/v1/videos" {
@@ -36,6 +49,45 @@ func TestVideoAccountPoolVideosURL(t *testing.T) {
 	completePool := VideoAccountPool{BaseURL: "https://video.example.com/custom/generate/", BaseURLIsComplete: true}
 	if got := videoAccountPoolVideosURL(completePool); got != "https://video.example.com/custom/generate" {
 		t.Fatalf("videoAccountPoolVideosURL(complete) = %q", got)
+	}
+}
+
+func TestVideoAccountPoolModelsURL(t *testing.T) {
+	basePool := VideoAccountPool{BaseURL: "https://video.example.com/"}
+	if got := videoAccountPoolModelsURL(basePool); got != "https://video.example.com/v1/models" {
+		t.Fatalf("videoAccountPoolModelsURL(base) = %q", got)
+	}
+	apiBasePool := VideoAccountPool{BaseURL: "https://video.example.com/v1"}
+	if got := videoAccountPoolModelsURL(apiBasePool); got != "https://video.example.com/v1/models" {
+		t.Fatalf("videoAccountPoolModelsURL(api base) = %q", got)
+	}
+	completePool := VideoAccountPool{BaseURL: "https://video.example.com/v1/videos/", BaseURLIsComplete: true}
+	if got := videoAccountPoolModelsURL(completePool); got != "https://video.example.com/v1/models" {
+		t.Fatalf("videoAccountPoolModelsURL(complete) = %q", got)
+	}
+}
+
+func TestFetchVideoAccountPoolModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer secret-key" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"seedance-2.0"},{"id":"seedance-2.0"},{"id":"video model"},{"id":"wan/v2.1"}]}`))
+	}))
+	defer server.Close()
+
+	models, err := fetchVideoAccountPoolModels(context.Background(), VideoAccountPool{
+		Name: "test", Format: videoPoolFormatOpenAIVideos, BaseURL: server.URL, APIKey: "secret-key",
+	})
+	if err != nil {
+		t.Fatalf("fetchVideoAccountPoolModels() error = %v", err)
+	}
+	if strings.Join(models, ",") != "seedance-2.0,wan/v2.1" {
+		t.Fatalf("unexpected models: %#v", models)
 	}
 }
 
@@ -152,6 +204,12 @@ func TestNormalizeVideoAccountPoolTestRequest(t *testing.T) {
 	}
 	if params, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "seedance-2.0", Prompt: "x", Duration: 8, AspectRatio: "1:1", Resolution: "480p"}); err != nil || params.Duration != 8 || params.AspectRatio != "1:1" {
 		t.Fatalf("expected custom duration and aspect ratio to be accepted: %#v, %v", params, err)
+	}
+	if params, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "seedance-2.0", Prompt: "x", Duration: 8, AspectRatio: "16:9", Resolution: "1080p"}); err != nil || params.Resolution != "1080p" {
+		t.Fatalf("expected custom resolution to be accepted: %#v, %v", params, err)
+	}
+	if _, err := normalizeVideoAccountPoolTestRequest(VideoAccountPoolTestRequest{Model: "seedance-2.0", Prompt: "x", Duration: 8, AspectRatio: "16:9", Resolution: "1080"}); err == nil {
+		t.Fatal("expected resolution without p suffix to be rejected")
 	}
 }
 
