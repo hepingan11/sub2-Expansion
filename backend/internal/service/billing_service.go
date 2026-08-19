@@ -1095,7 +1095,7 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 	var breakdown *CostBreakdown
 	var err error
 	switch resolved.Mode {
-	case BillingModePerRequest, BillingModeImage, BillingModeVideo:
+	case BillingModePerRequest, BillingModeImage, BillingModeVideo, BillingModeVideoPerSecond, BillingModeVideoPerRequest:
 		breakdown, err = s.calculatePerRequestCost(resolved, input)
 	default: // BillingModeToken
 		breakdown, err = s.calculateTokenCost(resolved, input)

@@ -267,6 +267,10 @@ func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }
 
+func (a *Account) IsVideo() bool {
+	return a != nil && a.Platform == PlatformVideo
+}
+
 func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
@@ -294,7 +298,7 @@ func (a *Account) IsCNProvider() bool {
 // 兼容上游，也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
 	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
+		a.Platform == PlatformVideo || a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
 }
 
 func (a *Account) GeminiOAuthType() string {

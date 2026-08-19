@@ -78,6 +78,20 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
+	mediaPlatform := service.PlatformGrok
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformVideo {
+		mediaPlatform = service.PlatformVideo
+	}
+	if mediaPlatform == service.PlatformVideo && endpoint != service.GrokMediaEndpointVideosGenerations && endpoint != service.GrokMediaEndpointVideoStatus {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Videos API endpoint is not supported for Video accounts")
+		return
+	}
+	mediaProviderLabel := "Grok"
+	mediaNoAccountCode := "grok_media_no_eligible_account"
+	if mediaPlatform == service.PlatformVideo {
+		mediaProviderLabel = "Video"
+		mediaNoAccountCode = "video_no_eligible_account"
+	}
 
 	var body []byte
 	var err error
@@ -100,7 +114,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	contentType := c.GetHeader("Content-Type")
 	requestInfo := service.ParseGrokMediaRequest(contentType, body)
 	requestModel := requestInfo.Model
-	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
+	routingModel := requestModel
+	if mediaPlatform == service.PlatformGrok {
+		routingModel = service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
+	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
@@ -115,7 +132,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 
 	if endpoint.IsGenerationRequest() {
-		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		if mediaPlatform == service.PlatformGrok && !service.GroupAllowsImageGeneration(apiKey.Group) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
@@ -197,7 +214,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		maxAccountSwitches = 3
 	}
 	routingStart := time.Now()
-	requiredCapability := grokMediaRequiredCapability(endpoint)
+	requiredCapability := service.OpenAIEndpointCapability("")
+	if mediaPlatform == service.PlatformGrok {
+		requiredCapability = grokMediaRequiredCapability(endpoint)
+	}
 
 	for {
 		if failoverClientGone(c) {
@@ -215,7 +235,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			false,
 			false,
 			false,
-			service.PlatformGrok,
+			mediaPlatform,
 		)
 		if err != nil {
 			if failoverClientGone(c) {
@@ -229,11 +249,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			if endpoint.IsGenerationRequest() && errors.Is(err, service.ErrNoAvailableAccounts) &&
 				(len(failedAccountIDs) == 0 || (mediaEligibilityRejected && lastFailoverErr == nil)) {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+				h.errorResponse(c, http.StatusServiceUnavailable, mediaNoAccountCode, "No eligible "+mediaProviderLabel+" accounts")
 				return
 			}
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, service.PlatformGrok)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, mediaPlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -250,10 +270,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		if selection == nil || selection.Account == nil {
 			if endpoint.IsGenerationRequest() {
 				markOpsRoutingCapacityLimited(c)
-				h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+				h.errorResponse(c, http.StatusServiceUnavailable, mediaNoAccountCode, "No eligible "+mediaProviderLabel+" accounts")
 				return
 			}
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, service.PlatformGrok)
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestModel, routingModel, mediaPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
@@ -279,7 +299,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 
 		account := selection.Account
-		if endpoint.IsGenerationRequest() {
+		if endpoint.IsGenerationRequest() && mediaPlatform == service.PlatformGrok {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {
 				mediaEligibilityRejected = true
@@ -291,7 +311,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				)
 				if switchCount >= maxAccountSwitches {
 					markOpsRoutingCapacityLimited(c)
-					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+					h.errorResponse(c, http.StatusServiceUnavailable, mediaNoAccountCode, "No eligible "+mediaProviderLabel+" accounts")
 					return
 				}
 				switchCount++
@@ -324,6 +344,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					accountReleaseFunc()
 				}
 			}()
+			if mediaPlatform == service.PlatformVideo {
+				return h.gatewayService.ForwardVideoAccount(requestCtx, c, account, endpoint, requestID, body, contentType)
+			}
 			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
 

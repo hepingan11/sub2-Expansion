@@ -101,7 +101,9 @@ export default {
         token: 'Token',
         perRequest: 'Per Request',
         image: 'Image (Per Request)',
-        video: 'Video (Per Second)'
+        video: 'Video (Legacy Per Second)',
+        videoPerSecond: 'Video (Per Second)',
+        videoPerRequest: 'Video (Per Request)'
       },
       form: {
         name: 'Name',
@@ -142,7 +144,7 @@ export default {
         addInterval: 'Add Interval',
         requestTiers: 'Request Tiers',
         imageTiers: 'Image Tiers (Per Request)',
-        videoTiers: 'Video Resolution Tiers (Per Second)',
+        videoTiers: 'Video Resolution Tiers (Selected Unit)',
         addTier: 'Add Tier',
         noTiersYet: 'No tiers yet. Click add to configure per-request pricing.',
         noPricingRules: 'No pricing rules yet. Click "Add" to create one.',

@@ -101,7 +101,9 @@ export default {
         token: 'Token',
         perRequest: '按次',
         image: '图片（按次）',
-        video: '视频（按秒）'
+        video: '视频（历史按秒）',
+        videoPerSecond: '视频（按秒）',
+        videoPerRequest: '视频（按次）'
       },
       form: {
         name: '名称',
@@ -142,7 +144,7 @@ export default {
         addInterval: '添加区间',
         requestTiers: '按次计费层级',
         imageTiers: '图片计费层级（按次）',
-        videoTiers: '视频分辨率层级（按秒）',
+        videoTiers: '视频分辨率层级（按所选单位）',
         addTier: '添加层级',
         noTiersYet: '暂无层级，点击添加配置按次计费价格',
         noPricingRules: '暂无定价规则，点击"添加"创建',

@@ -8,11 +8,15 @@ export const BILLING_MODE_TOKEN = 'token' as const
 export const BILLING_MODE_PER_REQUEST = 'per_request' as const
 export const BILLING_MODE_IMAGE = 'image' as const
 export const BILLING_MODE_VIDEO = 'video' as const
+export const BILLING_MODE_VIDEO_PER_SECOND = 'video_per_second' as const
+export const BILLING_MODE_VIDEO_PER_REQUEST = 'video_per_request' as const
 export type BillingMode =
   | typeof BILLING_MODE_TOKEN
   | typeof BILLING_MODE_PER_REQUEST
   | typeof BILLING_MODE_IMAGE
   | typeof BILLING_MODE_VIDEO
+  | typeof BILLING_MODE_VIDEO_PER_SECOND
+  | typeof BILLING_MODE_VIDEO_PER_REQUEST
 
 /** Billing-model-source values (must match service.BillingModelSource* constants in Go). */
 export const BILLING_MODEL_SOURCE_REQUESTED = 'requested' as const

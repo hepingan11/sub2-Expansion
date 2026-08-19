@@ -67,8 +67,13 @@ type TestEvent struct {
 // AccountTestOptions carries optional media for admin connectivity tests.
 // ImageDataURL / AudioDataURL are full data URLs (data:<mime>;base64,...).
 type AccountTestOptions struct {
-	ImageDataURL string
-	AudioDataURL string
+	ImageDataURL     string
+	AudioDataURL     string
+	VideoImages      []string
+	VideoURL         string
+	VideoDuration    int
+	VideoAspectRatio string
+	VideoResolution  string
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -287,6 +292,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	// Route to platform-specific test method
 	if account.IsCNProvider() && account.GetAPIProtocol() == APIProtocolChatCompletions {
 		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	}
+
+	if isVideoAccount(account) {
+		return s.testVideoAccountConnection(c, account, modelID, prompt, testOpts)
 	}
 
 	if account.IsOpenAI() {

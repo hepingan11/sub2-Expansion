@@ -87,12 +87,7 @@
             </label>
             <Select
               :modelValue="entry.billing_mode"
-              @update:modelValue="emit('update', {
-                ...entry,
-                billing_mode: $event as BillingMode,
-                intervals: [],
-                time_pricing: { ...entry.time_pricing, periods: [] },
-              })"
+              @update:modelValue="onBillingModeUpdate($event as BillingMode)"
               :options="billingModeOptions"
               class="mt-1"
             />
@@ -206,10 +201,10 @@
         </div>
 
         <!-- Image/video mode -->
-        <div v-else-if="entry.billing_mode === 'image' || entry.billing_mode === 'video'">
+        <div v-else-if="entry.billing_mode === 'image' || entry.billing_mode === 'video' || entry.billing_mode === 'video_per_second' || entry.billing_mode === 'video_per_request'">
           <!-- Default image price (per-request, same as per_request mode) -->
           <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
-            {{ entry.billing_mode === 'video' ? t('admin.channels.form.defaultVideoPrice') : t('admin.channels.form.defaultImagePrice') }}
+            {{ entry.billing_mode.startsWith('video') ? t('admin.channels.form.defaultVideoPrice') : t('admin.channels.form.defaultImagePrice') }}
             <span class="ml-1 font-normal text-gray-400">$</span>
           </label>
           <div class="mt-1 w-48">
@@ -220,9 +215,9 @@
           <!-- Image tiers -->
           <div class="mt-3 flex items-center justify-between">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {{ entry.billing_mode === 'video' ? t('admin.channels.form.videoTiers') : t('admin.channels.form.imageTiers') }}
+              {{ entry.billing_mode.startsWith('video') ? t('admin.channels.form.videoTiers') : t('admin.channels.form.imageTiers') }}
             </label>
-            <button type="button" @click="addMediaTier" class="text-xs text-primary-600 hover:text-primary-700">
+            <button v-if="!entry.billing_mode.startsWith('video') || entry.intervals.length < 4" type="button" @click="addMediaTier" class="text-xs text-primary-600 hover:text-primary-700">
               + {{ t('admin.channels.form.addTier') }}
             </button>
           </div>
@@ -279,13 +274,26 @@ const billingModeOptions = computed(() => [
   { value: 'token', label: t('admin.channels.billingMode.token') },
   { value: 'per_request', label: t('admin.channels.billingMode.perRequest') },
   { value: 'image', label: t('admin.channels.billingMode.image') },
-  { value: 'video', label: t('admin.channels.billingMode.video') }
+  { value: 'video_per_second', label: t('admin.channels.billingMode.videoPerSecond') },
+  { value: 'video_per_request', label: t('admin.channels.billingMode.videoPerRequest') }
 ])
 
 const billingModeLabel = computed(() => {
+  if (props.entry.billing_mode === 'video') return t('admin.channels.billingMode.videoPerSecond')
   const opt = billingModeOptions.value.find(o => o.value === props.entry.billing_mode)
   return opt ? opt.label : props.entry.billing_mode
 })
+
+function onBillingModeUpdate(mode: BillingMode) {
+  const intervals = mode.startsWith('video')
+    ? ['480p', '720p', '1080p', '2k'].map((tier_label, sort_order) => ({
+        min_tokens: 0, max_tokens: null, tier_label,
+        input_price: null, output_price: null, cache_write_price: null,
+        cache_read_price: null, per_request_price: null, sort_order,
+      }))
+    : []
+  emit('update', { ...props.entry, billing_mode: mode, intervals, time_pricing: { ...props.entry.time_pricing, periods: [] } })
+}
 
 function emitField(field: keyof PricingFormEntry, value: string) {
   emit('update', { ...props.entry, [field]: value === '' ? null : value })
@@ -304,8 +312,8 @@ function addInterval() {
 
 function addMediaTier() {
   const intervals = [...(props.entry.intervals || [])]
-  const labels = props.entry.billing_mode === 'video'
-    ? ['480p', '720p', '1080p']
+  const labels = props.entry.billing_mode.startsWith('video')
+    ? ['480p', '720p', '1080p', '2k']
     : ['1K', '2K', '4K', 'HD']
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',

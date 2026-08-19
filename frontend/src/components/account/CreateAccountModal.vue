@@ -160,6 +160,19 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'video'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'video'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="video" size="sm" />
+            Video
+          </button>
         </div>
         <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
@@ -1250,15 +1263,30 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+        <div v-if="form.platform === 'video'">
+          <label class="input-label">{{ t('admin.accounts.video.format') }}</label>
+          <select v-model="videoFormat" class="input">
+            <option value="openai_videos">OpenAI Videos</option>
+            <option value="comfyui">ComfyUI</option>
+          </select>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
+            :required="form.platform === 'video'"
             :placeholder="apiKeyBaseUrlPlaceholder"
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
+          <div v-if="form.platform === 'video' && videoFormat === 'openai_videos'" class="mt-3 flex items-center justify-between gap-4">
+            <div>
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.video.completeEndpoint') }}</span>
+              <p class="input-hint">{{ t('admin.accounts.video.completeEndpointHint') }}</p>
+            </div>
+            <Toggle v-model="videoBaseUrlIsComplete" />
+          </div>
           <GrokBaseUrlPresets
             v-if="form.platform === 'grok'"
             class="mt-2"
@@ -1274,6 +1302,11 @@
             @select="onCnPresetSelect"
           />
         </div>
+        <div v-if="form.platform === 'video' && videoFormat === 'comfyui'">
+          <label class="input-label">{{ t('admin.accounts.video.workflowId') }}</label>
+          <input v-model="videoWorkflowId" type="text" class="input font-mono" required placeholder="minimax_h3_lightx2v_no_pic" />
+          <p class="input-hint">{{ t('admin.accounts.video.workflowIdHint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
           <input
@@ -1288,6 +1321,7 @@
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
+          v-if="form.platform !== 'video'"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -3794,6 +3828,7 @@ const oauthStepTitle = computed(() => {
 
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
+  if (form.platform === 'video') return videoFormat.value === 'comfyui' ? t('admin.accounts.video.comfyBaseUrlHint') : t('admin.accounts.video.baseUrlHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
@@ -3801,6 +3836,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
+  if (form.platform === 'video') return videoFormat.value === 'comfyui' ? t('admin.accounts.video.tokenHint') : t('admin.accounts.video.apiKeyHint')
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
@@ -3813,6 +3849,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
     return defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value) || 'https://api.example.com'
   }
   switch (form.platform) {
+    case 'video':
+      return videoFormat.value === 'comfyui' ? 'https://autodl.art' : 'https://video-api.example.com'
     case 'openai':
       return 'https://api.openai.com'
     case 'gemini':
@@ -3826,6 +3864,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
 
 const apiKeyValuePlaceholder = computed(() => {
   switch (form.platform) {
+    case 'video':
+      return videoFormat.value === 'comfyui' ? 'AutoDL Token' : 'sk-video-...'
     case 'openai':
       return 'sk-proj-...'
     case 'gemini':
@@ -3920,7 +3960,17 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const videoBaseUrlIsComplete = ref(false)
+const videoFormat = ref<'openai_videos' | 'comfyui'>('openai_videos')
+const videoWorkflowId = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+
+watch(videoFormat, (format) => {
+  videoBaseUrlIsComplete.value = false
+  if (form.platform === 'video' && format === 'comfyui' && !apiKeyBaseUrl.value.trim()) {
+    apiKeyBaseUrl.value = 'https://autodl.art'
+  }
+})
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
@@ -4497,7 +4547,12 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
+    if (newPlatform === 'video') {
+      apiKeyBaseUrl.value = ''
+      videoBaseUrlIsComplete.value = false
+      videoFormat.value = 'openai_videos'
+      videoWorkflowId.value = ''
+    } else if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
     } else {
       apiKeyBaseUrl.value =
@@ -4534,6 +4589,11 @@ watch(
       modelRestrictionMode.value = 'mapping'
       form.concurrency = 1
       form.load_factor = null
+    }
+    if (newPlatform === 'video') {
+      accountCategory.value = 'apikey'
+      modelRestrictionMode.value = 'mapping'
+      modelMappings.value = [{ from: 'seedance-2.0', to: 'seedance-2.0' }]
     }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
@@ -5393,6 +5453,14 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (form.platform === 'video' && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(t('admin.accounts.video.baseUrlRequired'))
+    return
+  }
+  if (form.platform === 'video' && videoFormat.value === 'comfyui' && !videoWorkflowId.value.trim()) {
+    appStore.showError(t('admin.accounts.video.workflowIdRequired'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -5408,6 +5476,11 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
+  }
+  if (form.platform === 'video') {
+    credentials.format = videoFormat.value
+    credentials.base_url_is_complete = videoFormat.value === 'openai_videos' && videoBaseUrlIsComplete.value
+    if (videoFormat.value === 'comfyui') credentials.workflow_id = videoWorkflowId.value.trim()
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value

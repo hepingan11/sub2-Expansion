@@ -95,7 +95,8 @@ func RegisterGatewayRoutes(
 		}
 	}
 	videoGenerationHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+		platform := getGroupPlatform(c)
+		if platform == service.PlatformGrok || (platform == service.PlatformVideo && strings.HasSuffix(c.FullPath(), "/videos")) {
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
@@ -111,7 +112,9 @@ func RegisterGatewayRoutes(
 		// Video status requests do not carry a model, so composite groups cannot
 		// be resolved by compositeTargetPlatformMiddleware. Route them through
 		// the Grok handler and let scheduler/account selection enforce capacity.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		platform := getGroupPlatform(c)
+		if platform == service.PlatformGrok || platform == service.PlatformComposite ||
+			(platform == service.PlatformVideo && strings.HasSuffix(c.FullPath(), "/videos/:request_id")) {
 			h.OpenAIGateway.GrokVideoStatus(c)
 			return
 		}

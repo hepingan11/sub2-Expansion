@@ -14,13 +14,15 @@ const (
 	BillingModeToken      BillingMode = "token"       // 按 token 区间计费
 	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
-	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按视频生成次数）
+	BillingModeVideo      BillingMode = "video"       // 历史兼容值：视频按秒计费
+	BillingModeVideoPerSecond BillingMode = "video_per_second"
+	BillingModeVideoPerRequest BillingMode = "video_per_request"
 )
 
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, BillingModeVideoPerSecond, BillingModeVideoPerRequest, "":
 		return true
 	}
 	return false
@@ -29,10 +31,18 @@ func (m BillingMode) IsValid() bool {
 // IsValidUsageFilter 检查 BillingMode 是否可用于使用记录筛选。
 func (m BillingMode) IsValidUsageFilter() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, BillingModeVideoPerSecond, BillingModeVideoPerRequest, "":
 		return true
 	}
 	return false
+}
+
+func (m BillingMode) IsVideo() bool {
+	return m == BillingModeVideo || m == BillingModeVideoPerSecond || m == BillingModeVideoPerRequest
+}
+
+func (m BillingMode) IsVideoPerRequest() bool {
+	return m == BillingModeVideoPerRequest
 }
 
 const (
@@ -335,7 +345,7 @@ func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 	}
 
 	// per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
-	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
+	if mode == BillingModePerRequest || mode == BillingModeImage || mode.IsVideo() {
 		return nil
 	}
 	return validateIntervalOverlap(sorted)

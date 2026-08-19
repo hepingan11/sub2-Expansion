@@ -245,7 +245,7 @@ func defaultModelsListCandidateIDs(platform string) []string {
 			ids = append(ids, model.ID)
 		}
 		return ids
-	case PlatformGrok:
+	case PlatformGrok, PlatformVideo:
 		return xai.DefaultModelIDs()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()

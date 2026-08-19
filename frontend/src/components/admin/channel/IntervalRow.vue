@@ -39,17 +39,20 @@
     <template v-else>
       <div class="w-24">
         <label class="text-xs text-gray-400">
-          {{ mode === 'image' ? t('admin.channels.form.resolution') : t('admin.channels.form.tierLabel') }}
+          {{ mode === 'image' || isVideoMode ? t('admin.channels.form.resolution') : t('admin.channels.form.tierLabel') }}
         </label>
-        <input :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
+        <select v-if="isVideoMode" :value="interval.tier_label" @change="emitField('tier_label', ($event.target as HTMLSelectElement).value)" class="input mt-0.5 text-xs">
+          <option v-for="tier in videoTiers" :key="tier" :value="tier">{{ tier }}</option>
+        </select>
+        <input v-else :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
           type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : ''" />
       </div>
-      <div class="w-20">
+      <div v-if="!isVideoMode" class="w-20">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>
         <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"
           type="number" min="0" class="input mt-0.5 text-xs" />
       </div>
-      <div class="w-20">
+      <div v-if="!isVideoMode" class="w-20">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.maxTokens') }} <span class="text-gray-300">{{ t('admin.channels.form.inclusive') }}</span></label>
         <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
@@ -80,6 +83,9 @@ const props = defineProps<{
   interval: IntervalFormEntry
   mode: BillingMode
 }>()
+
+const isVideoMode = computed(() => props.mode === 'video' || props.mode === 'video_per_second' || props.mode === 'video_per_request')
+const videoTiers = ['480p', '720p', '1080p', '2k']
 
 const emit = defineEmits<{
   update: [interval: IntervalFormEntry]

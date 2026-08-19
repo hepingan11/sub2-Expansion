@@ -1068,8 +1068,13 @@ type TestAccountRequest struct {
 	Mode    string `json:"mode"`
 	// Optional media for Grok (and future) real generation tests.
 	// ImageDataURL / AudioDataURL are data:<mime>;base64,... payloads.
-	ImageDataURL string `json:"image_data_url"`
-	AudioDataURL string `json:"audio_data_url"`
+	ImageDataURL     string   `json:"image_data_url"`
+	AudioDataURL     string   `json:"audio_data_url"`
+	VideoImages      []string `json:"images"`
+	VideoURL         string   `json:"video_url"`
+	VideoDuration    int      `json:"duration"`
+	VideoAspectRatio string   `json:"aspect_ratio"`
+	VideoResolution  string   `json:"resolution"`
 }
 
 type SyncFromCRSRequest struct {
@@ -1100,8 +1105,13 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	opts := service.AccountTestOptions{
-		ImageDataURL: req.ImageDataURL,
-		AudioDataURL: req.AudioDataURL,
+		ImageDataURL:     req.ImageDataURL,
+		AudioDataURL:     req.AudioDataURL,
+		VideoImages:      req.VideoImages,
+		VideoURL:         req.VideoURL,
+		VideoDuration:    req.VideoDuration,
+		VideoAspectRatio: req.VideoAspectRatio,
+		VideoResolution:  req.VideoResolution,
 	}
 
 	// Use AccountTestService to test the account with SSE streaming
@@ -2703,6 +2713,25 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				DisplayName: requestedModel,
 			})
 		}
+		response.Success(c, models)
+		return
+	}
+
+	// Video accounts expose their configured model mapping. Live upstream models
+	// are loaded through /models/sync-upstream to avoid making the read endpoint
+	// unexpectedly call a third-party service.
+	if account.Platform == service.PlatformVideo {
+		mapping := account.GetModelMapping()
+		models := make([]map[string]any, 0, len(mapping))
+		for requestedModel := range mapping {
+			models = append(models, map[string]any{
+				"id":           requestedModel,
+				"object":       "model",
+				"type":         "model",
+				"display_name": requestedModel,
+			})
+		}
+		sort.Slice(models, func(i, j int) bool { return models[i]["id"].(string) < models[j]["id"].(string) })
 		response.Success(c, models)
 		return
 	}

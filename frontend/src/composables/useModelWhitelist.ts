@@ -162,6 +162,8 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+const videoModels = ['seedance-2.0']
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -428,6 +430,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'meta': return metaModels
     case 'xai':
     case 'grok': return xaiModels
+    case 'video': return videoModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot':

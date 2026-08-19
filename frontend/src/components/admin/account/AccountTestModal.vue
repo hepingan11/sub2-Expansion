@@ -91,6 +91,37 @@
           rows="3"
         />
       </div>
+      <div v-if="isVideoAccount" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div>
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.video.duration') }}</label>
+          <input v-model.number="videoDuration" type="number" min="1" step="1" class="input mt-1.5" :disabled="status === 'connecting'" />
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.video.aspectRatio') }}</label>
+          <select v-model="videoAspectRatio" class="input mt-1.5" :disabled="status === 'connecting'">
+            <option v-for="ratio in videoAspectRatios" :key="ratio" :value="ratio">{{ ratio }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.video.resolution') }}</label>
+          <input v-model="videoResolution" type="text" class="input mt-1.5" placeholder="480p" :disabled="status === 'connecting'" />
+        </div>
+        <div class="sm:col-span-3">
+          <TextArea
+            v-model="videoImagesInput"
+            :label="t('admin.accounts.video.images')"
+            :placeholder="t('admin.accounts.video.imagesPlaceholder')"
+            :hint="t('admin.accounts.video.imagesHint')"
+            :disabled="status === 'connecting'"
+            rows="2"
+          />
+        </div>
+        <div class="sm:col-span-3">
+          <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.video.sourceVideoUrl') }}</label>
+          <input v-model="videoSourceURL" type="url" class="input mt-1.5" placeholder="https://cdn.example.com/input.mp4" :disabled="status === 'connecting'" />
+          <p class="input-hint">{{ t('admin.accounts.video.sourceVideoHint') }}</p>
+        </div>
+      </div>
       <p
         v-else-if="isGrokAccount && promptInputHint"
         class="text-xs text-gray-500 dark:text-gray-400"
@@ -424,6 +455,14 @@ const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
+const isVideoAccount = computed(() => props.account?.platform === 'video')
+const isComfyUIVideoAccount = computed(() => props.account?.credentials?.format === 'comfyui')
+const videoDuration = ref(6)
+const videoAspectRatio = ref('16:9')
+const videoResolution = ref('480p')
+const videoImagesInput = ref('')
+const videoSourceURL = ref('')
+const videoAspectRatios = ['16:9', '9:16', '1:1', '4:3', '3:4']
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
@@ -497,6 +536,7 @@ const modelOptionsForMode = computed(() => {
 })
 
 const supportsPromptInput = computed(() => {
+  if (isVideoAccount.value) return true
   if (!isGrokAccount.value) {
     return supportsImageTest.value
   }
@@ -597,6 +637,7 @@ const clearMediaUploads = () => {
 }
 
 const promptInputLabel = computed(() => {
+  if (isVideoAccount.value) return t('admin.accounts.videoPromptLabel')
   if (supportsGrokVideoTest.value || grokTestMode.value === 'video') {
     return t('admin.accounts.videoPromptLabel')
   }
@@ -613,6 +654,7 @@ const promptInputLabel = computed(() => {
 })
 
 const promptInputPlaceholder = computed(() => {
+  if (isVideoAccount.value) return t('admin.accounts.videoPromptPlaceholder')
   if (grokTestMode.value === 'video') {
     return t('admin.accounts.videoPromptPlaceholder')
   }
@@ -629,6 +671,7 @@ const promptInputPlaceholder = computed(() => {
 })
 
 const promptInputHint = computed(() => {
+  if (isVideoAccount.value) return t(isComfyUIVideoAccount.value ? 'admin.accounts.video.comfyTestHint' : 'admin.accounts.video.openAITestHint')
   if (grokTestMode.value === 'video') {
     return t('admin.accounts.videoTestHint')
   }
@@ -651,6 +694,7 @@ const promptInputHint = computed(() => {
 })
 
 const testModeSummary = computed(() => {
+  if (isVideoAccount.value) return t('admin.accounts.videoTestMode')
   if (isGrokAccount.value) {
     switch (grokTestMode.value) {
       case 'video':
@@ -706,6 +750,8 @@ const applyDefaultPromptForMode = () => {
   if (testPrompt.value.trim()) return
   if (grokTestMode.value === 'video') {
     testPrompt.value = t('admin.accounts.videoPromptDefault')
+  } else if (isVideoAccount.value) {
+    testPrompt.value = t('admin.accounts.videoPromptDefault')
   } else if (grokTestMode.value === 'image' || supportsImageTest.value) {
     testPrompt.value = t('admin.accounts.imagePromptDefault')
   } else if (grokTestMode.value === 'search') {
@@ -744,6 +790,13 @@ watch(
       await loadAvailableModels()
       if (isGrokAccount.value) {
         pickDefaultModelForMode()
+        applyDefaultPromptForMode()
+      } else if (isVideoAccount.value) {
+        videoDuration.value = 6
+        videoAspectRatio.value = '16:9'
+        videoResolution.value = '480p'
+        videoImagesInput.value = ''
+        videoSourceURL.value = ''
         applyDefaultPromptForMode()
       }
     } else {
@@ -850,12 +903,27 @@ const startTest = async () => {
       mode?: string
       image_data_url?: string
       audio_data_url?: string
+      images?: string[]
+      video_url?: string
+      duration?: number
+      aspect_ratio?: string
+      resolution?: string
     } = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
+    }
+    if (isVideoAccount.value) {
+      requestBody.duration = videoDuration.value
+      requestBody.aspect_ratio = videoAspectRatio.value
+      requestBody.resolution = videoResolution.value.trim()
+      requestBody.images = videoImagesInput.value
+        .split(/[\n,]/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+      requestBody.video_url = videoSourceURL.value.trim()
     }
     if (isGrokAccount.value) {
       // Always send explicit Grok mode. search/tts/stt/realtime are standalone

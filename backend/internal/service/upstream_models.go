@@ -133,6 +133,8 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
 	switch {
+	case account.Platform == PlatformVideo:
+		return s.buildVideoUpstreamModelsRequest(ctx, account)
 	case account.Platform == PlatformAntigravity:
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
 	case account.IsGrok():
@@ -149,6 +151,30 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 			fmt.Sprintf("Unsupported platform for upstream model sync: %s", account.Platform), nil,
 		)
 	}
+}
+
+func (s *AccountTestService) buildVideoUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return nil, newUpstreamModelSyncUnsupportedError("Video accounts must use an API key", nil)
+	}
+	if err := NormalizeVideoAccountCredentials(account.Platform, account.Type, account.Credentials, false); err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Video account credentials", err)
+	}
+	if videoAccountFormat(account) == VideoAccountFormatComfyUI {
+		return nil, newUpstreamModelSyncUnsupportedError("ComfyUI does not expose a model-list endpoint; configure workflow model mappings on the account", nil)
+	}
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, newUpstreamModelSyncConfigError("No Video API key is available", nil)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, videoAccountModelsURL(account), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Video model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	account.ApplyHeaderOverrides(req.Header)
+	return req, nil
 }
 
 func (s *AccountTestService) buildGrokUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {

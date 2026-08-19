@@ -27,6 +27,7 @@ const (
 	PlatformKimi      = "kimi"     // Kimi (月之暗面 / Moonshot)
 	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
 	PlatformDeepseek  = "deepseek" // DeepSeek
+	PlatformVideo     = "video"     // 视频生成
 	PlatformComposite = "composite"
 )
 

@@ -28,12 +28,20 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <div v-if="account.platform === 'video'">
+          <label class="input-label">{{ t('admin.accounts.video.format') }}</label>
+          <select v-model="editVideoFormat" class="input">
+            <option value="openai_videos">OpenAI Videos</option>
+            <option value="comfyui">ComfyUI</option>
+          </select>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="editBaseUrl"
             type="text"
             class="input"
+            :required="account.platform === 'video'"
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -41,12 +49,21 @@
                   ? 'https://generativelanguage.googleapis.com'
                   : account.platform === 'antigravity'
                     ? 'https://cloudcode-pa.googleapis.com'
+                    : account.platform === 'video'
+                      ? editVideoFormat === 'comfyui' ? 'https://autodl.art' : 'https://video-api.example.com'
                     : account.platform === 'grok'
                       ? 'https://api.x.ai/v1'
                       : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
+          <div v-if="account.platform === 'video' && editVideoFormat === 'openai_videos'" class="mt-3 flex items-center justify-between gap-4">
+            <div>
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.video.completeEndpoint') }}</span>
+              <p class="input-hint">{{ t('admin.accounts.video.completeEndpointHint') }}</p>
+            </div>
+            <Toggle v-model="editVideoBaseUrlIsComplete" />
+          </div>
           <GrokBaseUrlPresets
             v-if="account.platform === 'grok'"
             class="mt-2"
@@ -61,6 +78,11 @@
             :current-url="editBaseUrl"
             @select="onCnPresetSelect"
           />
+        </div>
+        <div v-if="account.platform === 'video' && editVideoFormat === 'comfyui'">
+          <label class="input-label">{{ t('admin.accounts.video.workflowId') }}</label>
+          <input v-model="editVideoWorkflowId" type="text" class="input font-mono" required placeholder="minimax_h3_lightx2v_no_pic" />
+          <p class="input-hint">{{ t('admin.accounts.video.workflowIdHint') }}</p>
         </div>
         <!-- Account Mode Selection (CN providers) -->
         <div v-if="isCNApiKeyAccount">
@@ -121,6 +143,8 @@
                   ? 'AIza...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
+                    : account.platform === 'video'
+                      ? editVideoFormat === 'comfyui' ? 'AutoDL Token' : 'sk-video-...'
                     : account.platform === 'grok'
                       ? 'xai-...'
                       : 'sk-ant-...'
@@ -2858,6 +2882,7 @@ const handleOllamaCloudUsageUpdated = (state: OllamaCloudUsageState) => {
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
+  if (props.account.platform === 'video') return editVideoFormat.value === 'comfyui' ? t('admin.accounts.video.comfyBaseUrlHint') : t('admin.accounts.video.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (props.account.platform === 'grok') return ''
@@ -2884,6 +2909,9 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editVideoBaseUrlIsComplete = ref(false)
+const editVideoFormat = ref<'openai_videos' | 'comfyui'>('openai_videos')
+const editVideoWorkflowId = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3396,6 +3424,7 @@ const tempUnschedPresets = computed(() => [
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
+  if (props.account?.platform === 'video') return ''
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
@@ -3787,6 +3816,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
               ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+    editVideoBaseUrlIsComplete.value = credentials.base_url_is_complete === true
+    editVideoFormat.value = credentials.format === 'comfyui' ? 'comfyui' : 'openai_videos'
+    editVideoWorkflowId.value = typeof credentials.workflow_id === 'string' ? credentials.workflow_id : ''
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4418,6 +4450,10 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
   }
+  if (props.account.platform === 'video' && editVideoFormat.value === 'comfyui' && !editVideoWorkflowId.value.trim()) {
+    appStore.showError(t('admin.accounts.video.workflowIdRequired'))
+    return
+  }
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
@@ -4452,6 +4488,12 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = {
         ...currentCredentials,
         base_url: newBaseUrl
+      }
+      if (props.account.platform === 'video') {
+        newCredentials.format = editVideoFormat.value
+        newCredentials.base_url_is_complete = editVideoFormat.value === 'openai_videos' && editVideoBaseUrlIsComplete.value
+        if (editVideoFormat.value === 'comfyui') newCredentials.workflow_id = editVideoWorkflowId.value.trim()
+        else delete newCredentials.workflow_id
       }
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
