@@ -479,7 +479,7 @@ export default {
         saved: "配置已保存",
         savedContinue: "配置已保存，请继续刚才的请求",
         channels: {
-            description: "每个渠道选择一个 sub2api 分组，自动获取该组的 API Key 和模型，并可为模型指定能力与调用脚本。",
+            description: "每个渠道选择一个 sub2api 中实际创建的分组，自动获取该组的 API Key 和模型，并可为模型指定能力与调用脚本。",
             add: "新增渠道",
             unnamed: "未命名渠道",
             numberedName: "渠道 {{count}}",
@@ -523,6 +523,7 @@ export default {
             empty: "点击「选择模型」拉取或手动增加模型。",
             groupLoaded: "已获取分组 API Key 和 {{count}} 个模型",
             groupLoadFailed: "获取分组配置失败",
+            noGroups: "当前账号没有可用的 sub2api 分组",
             capabilities: {
                 image: "生图",
                 video: "视频",

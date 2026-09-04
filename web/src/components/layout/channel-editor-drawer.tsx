@@ -3,8 +3,8 @@ import { ListPlus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { resolveSub2apiChannel } from "@/services/api/sub2api";
-import { guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { apiFormatForSub2apiPlatform, fetchSub2apiGroups, resolveSub2apiChannel, type Sub2apiGroup } from "@/services/api/sub2api";
+import { guessCapability, normalizeChannelModels, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
@@ -19,30 +19,30 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
     const [selectOpen, setSelectOpen] = useState(false);
     const [scriptTarget, setScriptTarget] = useState<ScriptTarget | null>(null);
     const [groupLoading, setGroupLoading] = useState(false);
+    const [groups, setGroups] = useState<Sub2apiGroup[]>([]);
     const groupRequestId = useRef(0);
-    const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
-        { label: "OpenAI", value: "openai" },
-        { label: "Gemini", value: "gemini" },
-        { label: "Grok", value: "grok" },
-    ];
     const capabilityOptions: Array<{ label: string; value: ModelCapability }> = ["image", "video", "text", "audio"].map((value) => ({ label: t(`config.channelEditor.capabilities.${value}`), value: value as ModelCapability }));
 
     const syncGroup = useCallback(
-        async (group: ApiCallFormat, clearCurrent: boolean) => {
+        async (group: Sub2apiGroup) => {
             const requestId = ++groupRequestId.current;
-            if (clearCurrent) setDraft((current) => (current ? { ...current, apiFormat: group, apiKey: "", models: [] } : current));
+            const apiFormat = apiFormatForSub2apiPlatform(group.platform);
+            setDraft((current) => (current ? { ...current, groupId: group.id, groupName: group.name, apiFormat, apiKey: "", models: current.groupId === group.id ? current.models : [] } : current));
             setGroupLoading(true);
             try {
                 const resolved = await resolveSub2apiChannel(group, accessToken);
                 if (requestId !== groupRequestId.current) return;
                 setDraft((current) => {
-                    if (!current || current.apiFormat !== group) return current;
+                    if (!current || current.groupId !== group.id) return current;
                     const existingModels = new Map(current.models.map((model) => [model.name, model]));
                     return {
                         ...current,
                         apiKey: resolved.apiKey,
                         baseUrl: resolved.baseUrl,
-                        models: resolved.models.map((name) => existingModels.get(name) || { name, capability: guessCapability(name) }),
+                        models: resolved.models.map((name) => {
+                            const existing = existingModels.get(name);
+                            return { ...existing, name, capability: apiFormat === "anthropic" ? "text" : existing?.capability || guessCapability(name) };
+                        }),
                     };
                 });
                 message.success(t("config.channelEditor.groupLoaded", { count: resolved.models.length }));
@@ -59,23 +59,44 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
         if (!open) {
             groupRequestId.current += 1;
             setGroupLoading(false);
+            setGroups([]);
             return;
         }
         if (!channel) return;
         setDraft(channel);
-        if (accessToken) void syncGroup(channel.apiFormat, false);
-    }, [accessToken, channel, open, syncGroup]);
+        if (!accessToken) return;
+        const requestId = ++groupRequestId.current;
+        setGroupLoading(true);
+        void fetchSub2apiGroups(accessToken)
+            .then((items) => {
+                if (requestId !== groupRequestId.current) return;
+                const activeGroups = items.filter((item) => item.status === "active");
+                setGroups(activeGroups);
+                const selected = activeGroups.find((item) => item.id === channel.groupId) || activeGroups.find((item) => apiFormatForSub2apiPlatform(item.platform) === channel.apiFormat) || activeGroups[0];
+                if (!selected) throw new Error(t("config.channelEditor.noGroups"));
+                void syncGroup(selected);
+            })
+            .catch((error) => {
+                if (requestId === groupRequestId.current) message.error(error instanceof Error ? error.message : t("config.channelEditor.groupLoadFailed"));
+            })
+            .finally(() => {
+                if (requestId === groupRequestId.current) setGroupLoading(false);
+            });
+    }, [accessToken, channel, message, open, syncGroup, t]);
 
     if (!draft) return null;
 
     const patch = (value: Partial<ModelChannel>) => setDraft((current) => (current ? { ...current, ...value } : current));
     const setModels = (models: ChannelModel[]) => patch({ models });
 
-    const changeApiFormat = (apiFormat: ApiCallFormat) => void syncGroup(apiFormat, true);
+    const changeGroup = (groupId: number) => {
+        const group = groups.find((item) => item.id === groupId);
+        if (group) void syncGroup(group);
+    };
 
     const applySelection = (names: string[]) => {
         const map = new Map(draft.models.map((model) => [model.name, model]));
-        setModels(names.map((name) => map.get(name) || { name, capability: guessCapability(name) }));
+        setModels(names.map((name) => ({ ...map.get(name), name, capability: draft.apiFormat === "anthropic" ? "text" : map.get(name)?.capability || guessCapability(name) })));
     };
 
     const setCapability = (name: string, capability: ModelCapability) => setModels(draft.models.map((model) => (model.name === name ? { ...model, capability } : model)));
@@ -110,7 +131,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 </label>
                 <label className="block">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.group")}</span>
-                    <Select className="w-full" value={draft.apiFormat} options={apiFormatOptions} loading={groupLoading} onChange={changeApiFormat} />
+                    <Select className="w-full" value={draft.groupId} options={groups.map((item) => ({ label: item.name, value: item.id }))} loading={groupLoading} onChange={changeGroup} />
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.baseUrl")}</span>
@@ -140,7 +161,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                                 {model.name}
                             </span>
                             <div className="flex shrink-0 items-center gap-2">
-                                <Segmented size="small" value={model.capability} options={capabilityOptions} onChange={(value) => setCapability(model.name, value as ModelCapability)} />
+                                <Segmented size="small" value={model.capability} options={capabilityOptions} disabled={draft.apiFormat === "anthropic"} onChange={(value) => setCapability(model.name, value as ModelCapability)} />
                                 <Button size="small" type={model.script ? "primary" : "default"} ghost={Boolean(model.script)} onClick={() => setScriptTarget({ name: model.name, capability: model.capability, value: model.script || "" })}>
                                     {t(model.script ? "config.channelEditor.scriptReady" : "config.channelEditor.script")}
                                 </Button>

@@ -479,7 +479,7 @@ export default {
         saved: "Settings saved",
         savedContinue: "Settings saved. Continue with your previous request.",
         channels: {
-            description: "Choose a sub2api group for each provider, load its API key and models, then assign capabilities or request scripts.",
+            description: "Choose a group created in sub2api for each provider, load that group's API key and models, then assign capabilities or request scripts.",
             add: "Add provider",
             unnamed: "Unnamed provider",
             numberedName: "Provider {{count}}",
@@ -523,6 +523,7 @@ export default {
             empty: "Select models to fetch or manually add models.",
             groupLoaded: "Loaded the group API key and {{count}} models",
             groupLoadFailed: "Failed to load group configuration",
+            noGroups: "This account has no available sub2api groups",
             capabilities: {
                 image: "Image",
                 video: "Video",

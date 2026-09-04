@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { getSub2apiUser, loginSub2api, logoutSub2api, resolveSub2apiChannel, sub2apiChannelBaseUrl } from "@/services/api/sub2api";
+import { apiFormatForSub2apiPlatform, fetchSub2apiGroups, getSub2apiUser, loginSub2api, logoutSub2api, resolveSub2apiChannel, sub2apiChannelBaseUrl } from "@/services/api/sub2api";
 import { defaultConfig, guessCapability, useConfigStore } from "@/stores/use-config-store";
 
 export type LocalUser = {
@@ -61,14 +61,24 @@ export const useUserStore = create<UserStore>()(
 
                 const baseUrl = sub2apiChannelBaseUrl();
                 const config = useConfigStore.getState().config;
-                const groups = Array.from(new Set(config.channels.map((channel) => channel.apiFormat)));
-                const results = await Promise.allSettled(groups.map(async (group) => [group, await resolveSub2apiChannel(group, result.access_token as string)] as const));
+                const groups = (await fetchSub2apiGroups(result.access_token)).filter((group) => group.status === "active");
+                const groupsByChannel = config.channels.map((channel) => groups.find((group) => group.id === channel.groupId) || groups.find((group) => apiFormatForSub2apiPlatform(group.platform) === channel.apiFormat) || groups[0]);
+                const selectedGroups = Array.from(new Map(groupsByChannel.flatMap((group) => (group ? [[group.id, group] as const] : []))).values());
+                const results = await Promise.allSettled(selectedGroups.map(async (group) => [group.id, await resolveSub2apiChannel(group, result.access_token as string)] as const));
                 const resolvedByGroup = new Map(results.flatMap((entry) => (entry.status === "fulfilled" ? [entry.value] : [])));
-                const channels = config.channels.map((item) => {
-                    const resolved = resolvedByGroup.get(item.apiFormat);
+                const channels = config.channels.map((item, index) => {
+                    const group = groupsByChannel[index];
+                    const resolved = group ? resolvedByGroup.get(group.id) : undefined;
                     if (!resolved) return { ...item, baseUrl, apiKey: "" };
                     const existingModels = new Map(item.models.map((model) => [model.name, model]));
-                    return { ...item, ...resolved, models: resolved.models.map((name) => existingModels.get(name) || { name, capability: guessCapability(name) }) };
+                    return {
+                        ...item,
+                        ...resolved,
+                        models: resolved.models.map((name) => {
+                            const existing = existingModels.get(name);
+                            return { ...existing, name, capability: resolved.apiFormat === "anthropic" ? "text" : existing?.capability || guessCapability(name) };
+                        }),
+                    };
                 });
                 const primary = channels[0];
                 useConfigStore.getState().updateConfig("channels", channels);

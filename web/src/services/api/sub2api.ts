@@ -2,7 +2,7 @@ import { SUB2API_URL } from "@/constant/runtime-config";
 import type { ApiCallFormat } from "@/stores/use-config-store";
 
 type ApiEnvelope<T> = { code?: number; data?: T; message?: string };
-type Sub2apiGroup = { id: number; name: string; platform: string; status: string };
+export type Sub2apiGroup = { id: number; name: string; platform: string; status: string };
 type Sub2apiKey = { key: string; group_id: number | null; status: string };
 type Paginated<T> = { items?: T[] };
 
@@ -58,25 +58,32 @@ export async function fetchSub2apiModels(apiKey: string) {
         .sort((a, b) => a.localeCompare(b));
 }
 
-export async function resolveSub2apiChannel(group: ApiCallFormat, token: string) {
+export function fetchSub2apiGroups(token: string) {
     if (!token) throw new Error("登录状态已失效，请重新登录");
-    const groups = await request<Sub2apiGroup[]>("/groups/available", { headers: auth(token) });
-    const matchingGroups = groups.filter((item) => item.status === "active" && item.platform.toLowerCase() === group);
-    if (!matchingGroups.length) throw new Error(`当前账号没有可用的 ${groupLabel(group)} 分组`);
-
-    const keyLists = await Promise.all(
-        matchingGroups.map((item) => {
-            const query = new URLSearchParams({ page: "1", page_size: "20", status: "active", group_id: String(item.id) });
-            return request<Paginated<Sub2apiKey>>(`/keys?${query}`, { headers: auth(token) });
-        }),
-    );
-    const apiKey = keyLists.flatMap((item) => item.items || []).find((item) => item.status === "active")?.key || "";
-    if (!apiKey) throw new Error(`请先在 sub2api 的 ${groupLabel(group)} 分组下创建 API Key`);
-    return { apiKey, baseUrl: sub2apiChannelBaseUrl(), models: await fetchSub2apiModels(apiKey) };
+    return request<Sub2apiGroup[]>("/groups/available", { headers: auth(token) });
 }
 
-function groupLabel(group: ApiCallFormat) {
-    if (group === "gemini") return "Gemini";
-    if (group === "grok") return "Grok";
-    return "OpenAI";
+export async function resolveSub2apiChannel(group: Sub2apiGroup, token: string) {
+    if (!token) throw new Error("登录状态已失效，请重新登录");
+    if (group.status !== "active") throw new Error(`sub2api 分组“${group.name}”当前不可用`);
+    const query = new URLSearchParams({ page: "1", page_size: "20", status: "active", group_id: String(group.id) });
+    const keys = await request<Paginated<Sub2apiKey>>(`/keys?${query}`, { headers: auth(token) });
+    const apiKey = (keys.items || []).find((item) => item.status === "active" && item.group_id === group.id)?.key || "";
+    if (!apiKey) throw new Error(`请先在 sub2api 的“${group.name}”分组下创建 API Key`);
+    return {
+        apiKey,
+        apiFormat: apiFormatForSub2apiPlatform(group.platform),
+        baseUrl: sub2apiChannelBaseUrl(),
+        groupId: group.id,
+        groupName: group.name,
+        models: await fetchSub2apiModels(apiKey),
+    };
+}
+
+export function apiFormatForSub2apiPlatform(platform: string): ApiCallFormat {
+    const value = platform.trim().toLowerCase();
+    if (value === "gemini" || value === "antigravity") return "gemini";
+    if (value === "grok") return "grok";
+    if (value === "anthropic" || value === "claude") return "anthropic";
+    return "openai";
 }

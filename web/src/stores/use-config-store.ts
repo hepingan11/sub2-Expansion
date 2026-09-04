@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
 
-export type ApiCallFormat = "openai" | "gemini" | "grok";
+export type ApiCallFormat = "openai" | "gemini" | "grok" | "anthropic";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
@@ -18,6 +18,8 @@ export type ChannelModel = {
 export type ModelChannel = {
     id: string;
     name: string;
+    groupId?: number;
+    groupName?: string;
     baseUrl: string;
     apiKey: string;
     apiFormat: ApiCallFormat;
@@ -75,6 +77,7 @@ const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
 const GROK_BASE_URL = "https://api.x.ai";
+const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 export const LOCAL_PROXY_PACKAGE = "@basketikun/canvas-proxy";
 export const DEFAULT_LOCAL_PROXY_URL = "http://127.0.0.1:23210";
 
@@ -306,6 +309,8 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
     return {
         id: channel?.id?.trim() || nanoid(),
         name: channel?.name?.trim() || i18n.t("config.channels.newName"),
+        groupId: channel?.groupId,
+        groupName: channel?.groupName?.trim() || undefined,
         baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
         apiKey: channel?.apiKey || "",
         apiFormat,
@@ -464,11 +469,12 @@ function normalizeChannels(config: AiConfig) {
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
     if (apiFormat === "gemini") return GEMINI_BASE_URL;
     if (apiFormat === "grok") return GROK_BASE_URL;
+    if (apiFormat === "anthropic") return ANTHROPIC_BASE_URL;
     return OPENAI_BASE_URL;
 }
 
 function normalizeApiFormat(apiFormat: unknown): ApiCallFormat {
-    return apiFormat === "gemini" || apiFormat === "grok" ? apiFormat : "openai";
+    return apiFormat === "gemini" || apiFormat === "grok" || apiFormat === "anthropic" ? apiFormat : "openai";
 }
 
 function uniqueModelOptions(models: string[]) {
