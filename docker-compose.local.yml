@@ -1,0 +1,12 @@
+services:
+  app:
+    image: infinite-canvas:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      SUB2API_URL: ${SUB2API_URL:-http://host.docker.internal:8080}
+      SUB2API_ADMIN_KEY: ${SUB2API_ADMIN_KEY:-}
