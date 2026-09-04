@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 import { parseChangelog } from "./src/lib/release";
 
@@ -38,16 +38,31 @@ function localPluginsManifest(): Plugin {
     };
 }
 
-export default defineConfig({
-    base: process.env.VITE_BASE || "/",
-    plugins: [react(), localPluginsManifest()],
-    resolve: {
-        alias: {
-            "@": resolve(webDir, "src"),
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, webDir, "");
+    const sub2apiUrl = process.env.VITE_SUB2API_URL || env.VITE_SUB2API_URL;
+    return {
+        base: process.env.VITE_BASE || env.VITE_BASE || "/",
+        plugins: [react(), localPluginsManifest()],
+        resolve: {
+            alias: {
+                "@": resolve(webDir, "src"),
+            },
         },
-    },
-    define: {
-        __APP_VERSION__: JSON.stringify(localVersion),
-        __APP_RELEASES__: JSON.stringify(parseChangelog(localChangelog)),
-    },
+        define: {
+            __APP_VERSION__: JSON.stringify(localVersion),
+            __APP_RELEASES__: JSON.stringify(parseChangelog(localChangelog)),
+        },
+        server: sub2apiUrl
+            ? {
+                  proxy: {
+                      "/auth-api": {
+                          target: sub2apiUrl,
+                          changeOrigin: true,
+                          rewrite: (path) => path.replace(/^\/auth-api/, ""),
+                      },
+                  },
+              }
+            : undefined,
+    };
 });

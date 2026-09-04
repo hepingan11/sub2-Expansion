@@ -5,7 +5,8 @@ description: Implemented changes that still need manual verification
 
 # Pending Tests
 
-- sub2api 登录：配置 `SUB2API_URL` 后，使用邮箱密码登录应恢复账号会话；登录后必须选择本地文件夹，拒绝授权时不能进入画布。不同账号的画布、素材、配置和媒体文件应互相隔离；退出后重新登录另一账号不应看到前一账号数据。首个 AI 渠道应默认使用 `${SUB2API_URL}/v1`，并在账号存在 active API Key 时自动填充。
+- sub2api 登录：配置 `SUB2API_URL` 后，浏览器应只请求本站 `/auth-api`，由 Nginx 代理登录、登出、会话校验和 Key 列表请求，且 `SUB2API_ADMIN_KEY` 不得出现在 `config.js`。未登录访问任意业务页面应立即跳转登录页；有效会话刷新后应通过服务端校验并恢复，失效会话应返回登录页。登录后必须选择本地文件夹，拒绝授权时不能进入画布。不同账号的画布、素材、配置和媒体文件应互相隔离；退出后重新登录另一账号不应看到前一账号数据。首个 AI 渠道应默认使用 `${SUB2API_URL}/v1`，并在账号存在 active API Key 时自动填充。
+- sub2api 渠道分组：渠道编辑器应显示“分组”而非“协议”，并提供 OpenAI、Gemini、Grok。打开渠道或切换分组时，应只使用当前登录账号在对应 sub2api 平台分组下创建的 active API Key，通过同源 `/auth-api/v1/models` 自动获取该组模型；切换期间不得继续保留上一分组的 Key。已有同名模型的能力和调用脚本应保留。Grok 生图、视频和文本应使用 sub2api 的 OpenAI 兼容接口，Grok 音频应请求 `/v1/tts`；Grok 视频应发送 `duration`、`resolution`、`aspect_ratio`，并兼容 `request_id`、`task_id` 或 `id` 任务标识。
 
 The current release needs manual verification in these areas:
 

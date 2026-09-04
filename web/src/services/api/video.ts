@@ -11,7 +11,7 @@ import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
-type VideoResponse = { id: string; status?: string; error?: { message?: string }; url?: string; result_url?: string; video_url?: string; content?: { video_url?: string; url?: string } | null };
+type VideoResponse = { id?: string; request_id?: string; task_id?: string; status?: string; error?: { message?: string }; url?: string; result_url?: string; video_url?: string; content?: { video_url?: string; url?: string } | null };
 type ApiVideoResponse = VideoResponse | { code?: number | string; data?: VideoResponse | null; msg?: string; message?: string; error?: { message?: string } };
 type ApiEnvelope<T> = T | { code?: number | string; data?: T | null; msg?: string; message?: string; error?: { message?: string } };
 type RequestOptions = { signal?: AbortSignal };
@@ -76,6 +76,7 @@ export async function createVideoGenerationTask(config: AiConfig, prompt: string
     if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options);
     assertVideoConfig(requestConfig, requestConfig.model);
     if (requestConfig.apiFormat === "gemini") return createGeminiVideoTask(requestConfig, selectedModel, prompt, references, options);
+    if (requestConfig.apiFormat === "grok") return createGrokVideoTask(requestConfig, selectedModel, prompt, references, options);
     return createOpenAIVideoTask(requestConfig, selectedModel, prompt, references, options);
 }
 
@@ -170,8 +171,29 @@ async function createOpenAIVideoTask(config: AiConfig, model: string, prompt: st
     audios.forEach((file) => body.append("audio[]", file));
     try {
         const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), signal: options?.signal })).data);
-        if (!created.id) throw new Error(apiText("noVideoTaskId"));
-        return { id: created.id, provider: "openai", model };
+        const id = videoTaskId(created);
+        if (!id) throw new Error(apiText("noVideoTaskId"));
+        return { id, provider: "openai", model };
+    } catch (error) {
+        throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
+    }
+}
+
+async function createGrokVideoTask(config: AiConfig, model: string, prompt: string, references: ReferenceImage[], options?: RequestOptions): Promise<VideoGenerationTask> {
+    const images = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const body = {
+        model: modelOptionName(model),
+        prompt,
+        duration: Number(normalizeVideoSeconds(config.videoSeconds)),
+        resolution: normalizeVideoResolution(config.vquality),
+        aspect_ratio: videoAspectRatio(config.size),
+        ...(images.length === 1 ? { image: { url: images[0], type: "image_url" } } : images.length > 1 ? { reference_images: images.map((url) => ({ url, type: "image_url" })) } : {}),
+    };
+    try {
+        const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config, "application/json"), signal: options?.signal })).data);
+        const id = videoTaskId(created);
+        if (!id) throw new Error(apiText("noVideoTaskId"));
+        return { id, provider: "openai", model };
     } catch (error) {
         throw new Error(readAxiosError(error, apiText("videoTaskCreateFailed")));
     }
@@ -345,6 +367,10 @@ function unwrapEnvelope<T>(payload: ApiEnvelope<T>, emptyMessage: string): T {
 
 function videoResultUrl(payload: VideoResponse) {
     return [payload.video_url, payload.result_url, payload.url, payload.content?.video_url, payload.content?.url].find((url) => typeof url === "string" && (isPublicMediaUrl(url) || /\.mp4(\?|#|$)/i.test(url)));
+}
+
+function videoTaskId(payload: VideoResponse) {
+    return payload.id || payload.request_id || payload.task_id || "";
 }
 
 function readApiErrorMessage(value: unknown): string {

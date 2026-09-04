@@ -479,7 +479,7 @@ export default {
         saved: "Settings saved",
         savedContinue: "Settings saved. Continue with your previous request.",
         channels: {
-            description: "Choose a protocol for each provider, fetch its models, assign capabilities, and optionally customize request scripts.",
+            description: "Choose a sub2api group for each provider, load its API key and models, then assign capabilities or request scripts.",
             add: "Add provider",
             unnamed: "Unnamed provider",
             numberedName: "Provider {{count}}",
@@ -513,7 +513,7 @@ export default {
         channelEditor: {
             title: "Edit provider",
             name: "Provider name",
-            protocol: "Protocol",
+            group: "Group",
             baseUrl: "API endpoint",
             models: "Provider models",
             modelDescription: "{{count}} selected; assign a capability to each model and optionally customize its request script.",
@@ -521,6 +521,8 @@ export default {
             scriptReady: "Script set",
             script: "Request script",
             empty: "Select models to fetch or manually add models.",
+            groupLoaded: "Loaded the group API key and {{count}} models",
+            groupLoadFailed: "Failed to load group configuration",
             capabilities: {
                 image: "Image",
                 video: "Video",

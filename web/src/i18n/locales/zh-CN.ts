@@ -479,7 +479,7 @@ export default {
         saved: "配置已保存",
         savedContinue: "配置已保存，请继续刚才的请求",
         channels: {
-            description: "每个渠道选择一个协议并拉取模型，为每个模型指定能力（生图/视频/文本/音频），并可自定义调用脚本。",
+            description: "每个渠道选择一个 sub2api 分组，自动获取该组的 API Key 和模型，并可为模型指定能力与调用脚本。",
             add: "新增渠道",
             unnamed: "未命名渠道",
             numberedName: "渠道 {{count}}",
@@ -513,7 +513,7 @@ export default {
         channelEditor: {
             title: "编辑渠道",
             name: "渠道名称",
-            protocol: "协议",
+            group: "分组",
             baseUrl: "接口地址",
             models: "渠道模型",
             modelDescription: "已选 {{count}} 个；为每个模型指定能力并可自定义调用脚本。",
@@ -521,6 +521,8 @@ export default {
             scriptReady: "脚本已设",
             script: "调用脚本",
             empty: "点击「选择模型」拉取或手动增加模型。",
+            groupLoaded: "已获取分组 API Key 和 {{count}} 个模型",
+            groupLoadFailed: "获取分组配置失败",
             capabilities: {
                 image: "生图",
                 video: "视频",

@@ -1,38 +1,77 @@
-import { Button, Drawer, Input, Segmented, Select, Space } from "antd";
+import { App, Button, Drawer, Input, Segmented, Select, Space } from "antd";
 import { ListPlus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { resolveSub2apiChannel } from "@/services/api/sub2api";
+import { guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import { useUserStore } from "@/stores/use-user-store";
 import { ModelScriptEditor } from "./model-script-editor";
 import { ModelSelectModal } from "./model-select-modal";
 
 type ScriptTarget = { name: string; capability: ModelCapability; value: string };
 
 export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: boolean; channel: ModelChannel | null; onSave: (channel: ModelChannel) => void; onClose: () => void }) {
+    const { message } = App.useApp();
     const { t } = useTranslation();
+    const accessToken = useUserStore((state) => state.accessToken);
     const [draft, setDraft] = useState<ModelChannel | null>(channel);
     const [selectOpen, setSelectOpen] = useState(false);
     const [scriptTarget, setScriptTarget] = useState<ScriptTarget | null>(null);
+    const [groupLoading, setGroupLoading] = useState(false);
+    const groupRequestId = useRef(0);
     const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
         { label: "OpenAI", value: "openai" },
         { label: "Gemini", value: "gemini" },
+        { label: "Grok", value: "grok" },
     ];
     const capabilityOptions: Array<{ label: string; value: ModelCapability }> = ["image", "video", "text", "audio"].map((value) => ({ label: t(`config.channelEditor.capabilities.${value}`), value: value as ModelCapability }));
 
+    const syncGroup = useCallback(
+        async (group: ApiCallFormat, clearCurrent: boolean) => {
+            const requestId = ++groupRequestId.current;
+            if (clearCurrent) setDraft((current) => (current ? { ...current, apiFormat: group, apiKey: "", models: [] } : current));
+            setGroupLoading(true);
+            try {
+                const resolved = await resolveSub2apiChannel(group, accessToken);
+                if (requestId !== groupRequestId.current) return;
+                setDraft((current) => {
+                    if (!current || current.apiFormat !== group) return current;
+                    const existingModels = new Map(current.models.map((model) => [model.name, model]));
+                    return {
+                        ...current,
+                        apiKey: resolved.apiKey,
+                        baseUrl: resolved.baseUrl,
+                        models: resolved.models.map((name) => existingModels.get(name) || { name, capability: guessCapability(name) }),
+                    };
+                });
+                message.success(t("config.channelEditor.groupLoaded", { count: resolved.models.length }));
+            } catch (error) {
+                if (requestId === groupRequestId.current) message.error(error instanceof Error ? error.message : t("config.channelEditor.groupLoadFailed"));
+            } finally {
+                if (requestId === groupRequestId.current) setGroupLoading(false);
+            }
+        },
+        [accessToken, message, t],
+    );
+
     useEffect(() => {
-        if (open && channel) setDraft(channel);
-    }, [open, channel]);
+        if (!open) {
+            groupRequestId.current += 1;
+            setGroupLoading(false);
+            return;
+        }
+        if (!channel) return;
+        setDraft(channel);
+        if (accessToken) void syncGroup(channel.apiFormat, false);
+    }, [accessToken, channel, open, syncGroup]);
 
     if (!draft) return null;
 
     const patch = (value: Partial<ModelChannel>) => setDraft((current) => (current ? { ...current, ...value } : current));
     const setModels = (models: ChannelModel[]) => patch({ models });
 
-    const changeApiFormat = (apiFormat: ApiCallFormat) => {
-        const baseUrl = !draft.baseUrl.trim() || draft.baseUrl.trim() === defaultBaseUrlForApiFormat(draft.apiFormat) ? defaultBaseUrlForApiFormat(apiFormat) : draft.baseUrl;
-        patch({ apiFormat, baseUrl });
-    };
+    const changeApiFormat = (apiFormat: ApiCallFormat) => void syncGroup(apiFormat, true);
 
     const applySelection = (names: string[]) => {
         const map = new Map(draft.models.map((model) => [model.name, model]));
@@ -58,7 +97,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
             extra={
                 <Space>
                     <Button onClick={onClose}>{t("common.cancel")}</Button>
-                    <Button type="primary" onClick={save}>
+                    <Button type="primary" loading={groupLoading} onClick={save}>
                         {t("common.save")}
                     </Button>
                 </Space>
@@ -70,8 +109,8 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                     <Input value={draft.name} onChange={(event) => patch({ name: event.target.value })} />
                 </label>
                 <label className="block">
-                    <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.protocol")}</span>
-                    <Select className="w-full" value={draft.apiFormat} options={apiFormatOptions} onChange={changeApiFormat} />
+                    <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.group")}</span>
+                    <Select className="w-full" value={draft.apiFormat} options={apiFormatOptions} loading={groupLoading} onChange={changeApiFormat} />
                 </label>
                 <label className="block md:col-span-2">
                     <span className="mb-1 block text-sm font-medium">{t("config.channelEditor.baseUrl")}</span>
@@ -88,7 +127,7 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                     <div className="text-sm font-semibold">{t("config.channelEditor.models")}</div>
                     <div className="mt-0.5 text-xs text-stone-500">{t("config.channelEditor.modelDescription", { count: draft.models.length })}</div>
                 </div>
-                <Button type="primary" icon={<ListPlus className="size-4" />} onClick={() => setSelectOpen(true)}>
+                <Button type="primary" icon={<ListPlus className="size-4" />} disabled={groupLoading} onClick={() => setSelectOpen(true)}>
                     {t("config.channelEditor.selectModels")}
                 </Button>
             </div>

@@ -8,5 +8,7 @@ services:
       - "3000:3000"
     restart: unless-stopped
     environment:
+      # 容器内通过 host.docker.internal 访问本机 sub2api；浏览器只请求本站的 /auth-api。
       SUB2API_URL: ${SUB2API_URL:-http://host.docker.internal:8080}
+      # 仅保留在服务端环境中，不会写入前端运行时配置。
       SUB2API_ADMIN_KEY: ${SUB2API_ADMIN_KEY:-}

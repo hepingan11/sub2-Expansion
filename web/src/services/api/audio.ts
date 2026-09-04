@@ -48,7 +48,7 @@ export async function requestAudioGeneration(config: AiConfig, prompt: string, o
 
     try {
         const response = await axios.post<Blob>(
-            aiApiUrl(requestConfig, "/audio/speech"),
+            aiApiUrl(requestConfig, requestConfig.apiFormat === "grok" ? "/tts" : "/audio/speech"),
             {
                 model,
                 input: prompt,

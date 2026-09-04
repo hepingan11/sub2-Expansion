@@ -1,5 +1,6 @@
 import axios from "axios";
 
+import { SUB2API_URL } from "@/constant/runtime-config";
 import i18n from "@/i18n";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { normalizePluginImages, runModelPlugin } from "./model-plugin";
@@ -7,6 +8,7 @@ import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
+import { fetchSub2apiModels } from "@/services/api/sub2api";
 import type { ReferenceImage } from "@/types/image";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
@@ -902,6 +904,8 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
 }
 
 export async function fetchChannelModels(channel: ModelChannel) {
+    const channelOrigin = channel.baseUrl.trim().replace(/\/v1\/?$/i, "").replace(/\/+$/, "");
+    if (SUB2API_URL && channelOrigin === SUB2API_URL.replace(/\/+$/, "")) return fetchSub2apiModels(channel.apiKey);
     return fetchImageModels({ baseUrl: channel.baseUrl, apiKey: channel.apiKey, apiFormat: channel.apiFormat });
 }
 

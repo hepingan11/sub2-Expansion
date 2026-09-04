@@ -6,7 +6,9 @@ services:
       - "3000:3000"
     restart: unless-stopped
     environment:
+      # 容器内可访问的 sub2api 地址；浏览器登录只请求本站的 /auth-api。
       SUB2API_URL: ${SUB2API_URL:-http://sub2api:8080}
+      # 仅保留在服务端环境中，不会写入前端运行时配置。
       SUB2API_ADMIN_KEY: ${SUB2API_ADMIN_KEY:-}
     # 统计分析（可选，默认关闭）。每家一个独立变量，填了谁就启用谁，可同时启用多家：
     # environment:
