@@ -40,13 +40,14 @@ type FavoriteSiteRequest struct {
 }
 
 type VideoAccountPoolRequest struct {
-	Name              string `json:"name"`
-	Format            string `json:"format"`
-	BaseURL           string `json:"baseUrl"`
-	BaseURLIsComplete bool   `json:"baseUrlIsComplete"`
-	APIKey            string `json:"apiKey"`
-	ClearAPIKey       bool   `json:"clearApiKey"`
-	Enabled           bool   `json:"enabled"`
+	Name              string   `json:"name"`
+	Format            string   `json:"format"`
+	BaseURL           string   `json:"baseUrl"`
+	BaseURLIsComplete bool     `json:"baseUrlIsComplete"`
+	APIKey            string   `json:"apiKey"`
+	ClearAPIKey       bool     `json:"clearApiKey"`
+	Models            []string `json:"models"`
+	Enabled           bool     `json:"enabled"`
 }
 
 type VideoAccountPoolResponse struct {
@@ -56,6 +57,7 @@ type VideoAccountPoolResponse struct {
 	BaseURL           string   `json:"baseUrl"`
 	BaseURLIsComplete bool     `json:"baseUrlIsComplete"`
 	APIKeySet         bool     `json:"apiKeySet"`
+	Models            []string `json:"models"`
 	Enabled           bool     `json:"enabled"`
 	CreatedAt         JSONTime `json:"createdAt"`
 	UpdatedAt         JSONTime `json:"updatedAt"`

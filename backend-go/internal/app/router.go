@@ -61,6 +61,7 @@ func (app *App) router() *gin.Engine {
 	protected.POST("/video-account-pools", app.createVideoAccountPool)
 	protected.PUT("/video-account-pools/:id", app.updateVideoAccountPool)
 	protected.DELETE("/video-account-pools/:id", app.deleteVideoAccountPool)
+	protected.POST("/video-account-pools/:id/models/sync", app.syncVideoAccountPoolModels)
 	protected.POST("/video-account-pools/:id/test", app.startVideoAccountPoolTest)
 	protected.GET("/video-account-pools/:id/test/:taskId", app.getVideoAccountPoolTest)
 	protected.GET("/stats", app.stats)
