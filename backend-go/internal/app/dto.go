@@ -324,6 +324,61 @@ type RechargeRewardStatsResponse struct {
 	Daily             []DailyRechargeRewardStat `json:"daily"`
 }
 
+type LotteryEligibilityRequest struct {
+	PeriodStart string `json:"periodStart" form:"periodStart"`
+	PeriodEnd   string `json:"periodEnd" form:"periodEnd"`
+	MinRecharge Amount `json:"minRecharge" form:"minRecharge"`
+}
+
+type LotteryDrawRequest struct {
+	RequestID   string `json:"requestId"`
+	Name        string `json:"name"`
+	PeriodStart string `json:"periodStart"`
+	PeriodEnd   string `json:"periodEnd"`
+	MinRecharge Amount `json:"minRecharge"`
+	WinnerCount int    `json:"winnerCount"`
+	PrizeAmount Amount `json:"prizeAmount"`
+}
+
+type LotteryCandidateResponse struct {
+	UserID         int64  `json:"userId"`
+	UserName       string `json:"userName"`
+	UserEmail      string `json:"userEmail"`
+	RechargeAmount Amount `json:"rechargeAmount"`
+	OrderCount     int    `json:"orderCount"`
+}
+
+type LotteryEligibilityResponse struct {
+	PeriodStart   JSONTime                   `json:"periodStart"`
+	PeriodEnd     JSONTime                   `json:"periodEnd"`
+	MinRecharge   Amount                     `json:"minRecharge"`
+	EligibleCount int                        `json:"eligibleCount"`
+	Candidates    []LotteryCandidateResponse `json:"candidates"`
+	Truncated     bool                       `json:"truncated"`
+}
+
+type LotteryDrawResponse struct {
+	ID            uint64                  `json:"id"`
+	RequestID     string                  `json:"requestId"`
+	Name          string                  `json:"name"`
+	PeriodStart   JSONTime                `json:"periodStart"`
+	PeriodEnd     JSONTime                `json:"periodEnd"`
+	MinRecharge   Amount                  `json:"minRecharge"`
+	EligibleCount int                     `json:"eligibleCount"`
+	WinnerCount   int                     `json:"winnerCount"`
+	PrizeAmount   Amount                  `json:"prizeAmount"`
+	Winners       []LotteryWinnerResponse `json:"winners"`
+	CreatedAt     JSONTime                `json:"createdAt"`
+}
+
+type LotteryWinnerResponse struct {
+	LotteryCandidateResponse
+	PrizeAmount Amount    `json:"prizeAmount"`
+	AwardStatus string    `json:"awardStatus"`
+	AwardError  string    `json:"awardError"`
+	AwardedAt   *JSONTime `json:"awardedAt,omitempty"`
+}
+
 type DailyRechargeRewardStat struct {
 	RewardDate LocalDate `json:"rewardDate"`
 	Amount     Amount    `json:"amount"`

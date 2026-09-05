@@ -1,0 +1,7 @@
+interface:
+  display_name: "充值用户抽奖"
+  short_description: "按充值资格预览用户、执行随机抽奖并核验中奖余额发放状态"
+  default_prompt: "Use $recharge-lottery to preview eligible recharge users and prepare a confirmed lottery draw."
+
+policy:
+  allow_implicit_invocation: true

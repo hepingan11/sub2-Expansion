@@ -278,6 +278,62 @@ type RechargeRewardClaim struct {
 	UpdatedAt       JSONTime `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
 }
 
+type LotteryDraw struct {
+	ID            uint64   `gorm:"primaryKey;column:id" json:"id"`
+	RequestID     string   `gorm:"column:request_id;size:64;not null;uniqueIndex" json:"requestId"`
+	Name          string   `gorm:"column:name;size:120;not null" json:"name"`
+	PeriodStart   JSONTime `gorm:"column:period_start;not null" json:"periodStart"`
+	PeriodEnd     JSONTime `gorm:"column:period_end;not null" json:"periodEnd"`
+	MinRecharge   Amount   `gorm:"column:min_recharge;type:decimal(10,2);not null" json:"minRecharge"`
+	EligibleCount int      `gorm:"column:eligible_count;not null" json:"eligibleCount"`
+	WinnerCount   int      `gorm:"column:winner_count;not null" json:"winnerCount"`
+	PrizeAmount   Amount   `gorm:"column:prize_amount;type:decimal(10,2);not null" json:"prizeAmount"`
+	CreatedAt     JSONTime `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+}
+
+func (LotteryDraw) TableName() string { return "lottery_draws" }
+
+func (d *LotteryDraw) BeforeCreate(*gorm.DB) error {
+	if d.CreatedAt.Time.IsZero() {
+		d.CreatedAt = JSONTime{Time: time.Now()}
+	}
+	return nil
+}
+
+type LotteryEntry struct {
+	ID             uint64    `gorm:"primaryKey;column:id" json:"id"`
+	DrawID         uint64    `gorm:"column:draw_id;not null;uniqueIndex:uk_lottery_entries_draw_user;index" json:"drawId"`
+	UserID         int64     `gorm:"column:user_id;not null;uniqueIndex:uk_lottery_entries_draw_user" json:"userId"`
+	UserName       string    `gorm:"column:user_name;size:255;not null" json:"userName"`
+	UserEmail      string    `gorm:"column:user_email;size:255;not null" json:"userEmail"`
+	RechargeAmount Amount    `gorm:"column:recharge_amount;type:decimal(10,2);not null" json:"rechargeAmount"`
+	OrderCount     int       `gorm:"column:order_count;not null" json:"orderCount"`
+	Winner         bool      `gorm:"column:winner;not null;index:idx_lottery_entries_winner" json:"winner"`
+	AwardStatus    string    `gorm:"column:award_status;size:20;not null" json:"awardStatus"`
+	AwardError     string    `gorm:"column:award_error;type:text;not null" json:"awardError"`
+	AwardedAt      *JSONTime `gorm:"column:awarded_at" json:"awardedAt,omitempty"`
+	CreatedAt      JSONTime  `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
+	UpdatedAt      JSONTime  `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+}
+
+func (LotteryEntry) TableName() string { return "lottery_entries" }
+
+func (e *LotteryEntry) BeforeCreate(*gorm.DB) error {
+	now := JSONTime{Time: time.Now()}
+	if e.CreatedAt.Time.IsZero() {
+		e.CreatedAt = now
+	}
+	if e.UpdatedAt.Time.IsZero() {
+		e.UpdatedAt = now
+	}
+	return nil
+}
+
+func (e *LotteryEntry) BeforeUpdate(*gorm.DB) error {
+	e.UpdatedAt = JSONTime{Time: time.Now()}
+	return nil
+}
+
 func (RechargeRewardClaim) TableName() string {
 	return "recharge_reward_claims"
 }

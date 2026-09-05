@@ -374,6 +374,54 @@ export interface RechargeRewardStats {
   daily: DailyRechargeRewardStat[];
 }
 
+export interface LotteryCandidate {
+  userId: number;
+  userName: string;
+  userEmail: string;
+  rechargeAmount: number;
+  orderCount: number;
+}
+
+export interface LotteryEligibility {
+  periodStart: string;
+  periodEnd: string;
+  minRecharge: number;
+  eligibleCount: number;
+  candidates: LotteryCandidate[];
+  truncated: boolean;
+}
+
+export interface LotteryDraw {
+  id: number;
+  requestId: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  minRecharge: number;
+  eligibleCount: number;
+  winnerCount: number;
+  prizeAmount: number;
+  winners: LotteryWinner[];
+  createdAt: string;
+}
+
+export interface LotteryWinner extends LotteryCandidate {
+  prizeAmount: number;
+  awardStatus: 'PENDING' | 'PROCESSING' | 'AWARDED' | 'FAILED' | string;
+  awardError: string;
+  awardedAt?: string;
+}
+
+export interface LotteryDrawPayload {
+  requestId: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  minRecharge: number;
+  winnerCount: number;
+  prizeAmount: number;
+}
+
 export interface SocialBindingPayload {
   platform: string;
   userId: string;
@@ -818,6 +866,30 @@ export async function fetchRechargeRewardClaims(params: Record<string, string | 
 
 export async function fetchRechargeRewardStats() {
   return request<RechargeRewardStats>('/api/admin/recharge-reward-stats');
+}
+
+export async function fetchLotteryEligibility(params: { periodStart: string; periodEnd: string; minRecharge: number }) {
+  const query = new URLSearchParams({
+    periodStart: params.periodStart,
+    periodEnd: params.periodEnd,
+    minRecharge: String(params.minRecharge)
+  });
+  return request<LotteryEligibility>(`/api/admin/lotteries/eligibility?${query.toString()}`);
+}
+
+export async function fetchLotteryDraws() {
+  return request<LotteryDraw[]>('/api/admin/lotteries');
+}
+
+export async function createLotteryDraw(payload: LotteryDrawPayload) {
+  return request<LotteryDraw>('/api/admin/lotteries/draw', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function retryLotteryAwards(id: number) {
+  return request<LotteryDraw>(`/api/admin/lotteries/${id}/retry-awards`, { method: 'POST' });
 }
 
 export async function fetchInvitationRecords(params: Record<string, string | number | undefined>) {

@@ -42,6 +42,7 @@ import {
   createFavoriteSite,
   createVideoAccountPool,
   createRechargeActivity,
+  createLotteryDraw,
   createSub2APIGroupRateLog,
   claimRechargeReward,
   deleteCode,
@@ -63,6 +64,8 @@ import {
   fetchRechargeActivities,
   fetchRechargeRewardClaims,
   fetchRechargeRewardStats,
+  fetchLotteryEligibility,
+  fetchLotteryDraws,
   fetchSub2APIGroupRateMonitor,
   fetchSub2APIGroupRateLogs,
   fetchSystemUpdateCheck,
@@ -82,6 +85,8 @@ import {
   RechargeActivity,
   RechargeActivityPayload,
   RechargeRewardStats,
+  LotteryDraw,
+  LotteryEligibility,
   Stats,
   InvitationSettings,
   InvitationGuideSettings,
@@ -110,6 +115,7 @@ import {
   updateSub2APIGroupRateLog,
   refreshSub2APIGroupRates,
   runSystemUpdate,
+  retryLotteryAwards,
   startVideoAccountPoolTest,
   UserRechargeRewards,
   UserTokenUsageRanking,
@@ -165,6 +171,32 @@ import {
 import { CheckInTrendChart, InvitationTrendChart, RateLineChart, RechargeRewardTrendChart } from './components/Charts';
 import { alertDialog, confirmDialog, FeedbackHost, notifyError, notifySuccess } from './components/Feedback';
 
+function dateToDateTimeLocal(value: Date) {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function oneMonthAgoDateTimeLocal() {
+  const now = new Date();
+  const day = now.getDate();
+  const result = new Date(now);
+  result.setDate(1);
+  result.setMonth(result.getMonth() - 1);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDay));
+  return dateToDateTimeLocal(result);
+}
+
+function lotteryAwardStatusText(status: string) {
+  if (status === 'AWARDED') return '已发放';
+  if (status === 'FAILED') return '失败';
+  if (status === 'PROCESSING') return '发放中';
+  return '待发放';
+}
+
+function lotteryUserDisplay(userName: string, userEmail: string) {
+  return `${userName.trim() || '未设置名称'} · ${userEmail.trim() || '未设置邮箱'}`;
+}
 
 export default function App() {
   return (
@@ -1005,6 +1037,15 @@ function Dashboard({
   const [rechargeClaimTotalPages, setRechargeClaimTotalPages] = useState(1);
   const [editingRechargeActivity, setEditingRechargeActivity] = useState<RechargeActivity | null>(null);
   const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
+  const [lotteryName, setLotteryName] = useState('月度充值抽奖');
+  const [lotteryStart, setLotteryStart] = useState(oneMonthAgoDateTimeLocal);
+  const [lotteryEnd, setLotteryEnd] = useState(() => dateToDateTimeLocal(new Date()));
+  const [lotteryMinimum, setLotteryMinimum] = useState('5.00');
+  const [lotteryWinnerCount, setLotteryWinnerCount] = useState('1');
+  const [lotteryPrizeAmount, setLotteryPrizeAmount] = useState('5.00');
+  const [lotteryEligibility, setLotteryEligibility] = useState<LotteryEligibility | null>(null);
+  const [lotteryDraws, setLotteryDraws] = useState<LotteryDraw[]>([]);
+  const [lotteryLoading, setLotteryLoading] = useState(false);
   const [invitationRecords, setInvitationRecords] = useState<InvitationRecord[]>([]);
   const [invitationStats, setInvitationStats] = useState<InvitationStats | null>(null);
   const [invitationRecordKeyword, setInvitationRecordKeyword] = useState('');
@@ -1262,6 +1303,105 @@ function Dashboard({
     }
   }
 
+  function lotteryConditions() {
+    const minimum = Number(lotteryMinimum);
+    if (!lotteryStart || !lotteryEnd || !Number.isFinite(minimum) || minimum <= 0) {
+      throw new Error('请填写有效的统计时间和最低充值金额');
+    }
+    const periodStart = new Date(lotteryStart).toISOString();
+    const periodEnd = new Date(lotteryEnd).toISOString();
+    if (new Date(periodEnd).getTime() <= new Date(periodStart).getTime()) {
+      throw new Error('结束时间必须晚于开始时间');
+    }
+    return { periodStart, periodEnd, minRecharge: minimum };
+  }
+
+  async function loadLotteryDraws() {
+    try {
+      setLotteryDraws(await fetchLotteryDraws());
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '加载抽奖记录失败');
+    }
+  }
+
+  async function previewLottery() {
+    setLotteryLoading(true);
+    try {
+      const result = await fetchLotteryEligibility(lotteryConditions());
+      setLotteryEligibility(result);
+      notifySuccess(`已识别 ${result.eligibleCount} 名符合条件的用户`);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '识别抽奖用户失败');
+    } finally {
+      setLotteryLoading(false);
+    }
+  }
+
+  async function runLottery() {
+    const winnerCount = Number(lotteryWinnerCount);
+    const prizeAmount = Number(lotteryPrizeAmount);
+    if (!Number.isInteger(winnerCount) || winnerCount < 1) {
+      notifyError('中奖人数必须是大于 0 的整数');
+      return;
+    }
+    if (!Number.isFinite(prizeAmount) || prizeAmount <= 0 || prizeAmount > 1000000) {
+      notifyError('每人中奖金额必须大于 0 且不能超过 1000000');
+      return;
+    }
+    if (!lotteryName.trim()) {
+      notifyError('请填写抽奖名称');
+      return;
+    }
+    if (!await confirmDialog({
+      title: '确认执行抽奖',
+      message: `后端将重新核验充值订单，随机抽取 ${winnerCount} 人，并向每人发放 ${prizeAmount.toFixed(2)} 元余额。`,
+      confirmText: '开始抽奖'
+    })) return;
+    setLotteryLoading(true);
+    try {
+      const conditions = lotteryConditions();
+      const requestId = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const draw = await createLotteryDraw({
+        requestId,
+        name: lotteryName.trim(),
+        ...conditions,
+        winnerCount,
+        prizeAmount
+      });
+      setLotteryDraws((current) => [draw, ...current.filter((item) => item.id !== draw.id)]);
+      setLotteryEligibility(null);
+      await alertDialog({
+        title: '抽奖完成',
+        message: draw.winners.map((winner) => `${lotteryUserDisplay(winner.userName, winner.userEmail)}：${winner.awardStatus === 'AWARDED' ? `已发放 ${Number(winner.prizeAmount).toFixed(2)} 元` : `${lotteryAwardStatusText(winner.awardStatus)}，可在记录中重试`}`).join('\n'),
+        confirmText: '知道了'
+      });
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '执行抽奖失败');
+    } finally {
+      setLotteryLoading(false);
+    }
+  }
+
+  async function retryDrawAwards(draw: LotteryDraw) {
+    setLotteryLoading(true);
+    try {
+      const updated = await retryLotteryAwards(draw.id);
+      setLotteryDraws((current) => current.map((item) => item.id === updated.id ? updated : item));
+      const failed = updated.winners.filter((winner) => winner.awardStatus === 'FAILED').length;
+      if (failed > 0) {
+        notifyError(`仍有 ${failed} 位中奖用户发放失败`);
+      } else {
+        notifySuccess('中奖余额已全部发放');
+      }
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : '重试发放失败');
+    } finally {
+      setLotteryLoading(false);
+    }
+  }
+
   async function loadCheckInStats() {
     setLoading(true);
     setError('');
@@ -1389,6 +1529,7 @@ function Dashboard({
     }
     if (activeSection === 'recharge') {
       loadRechargeActivities();
+      loadLotteryDraws();
     }
     if (activeSection === 'invitations') {
       loadInvitationRecords(0);
@@ -2563,6 +2704,111 @@ function Dashboard({
               刷新
             </button>
           </form>
+          <section className="settings-panel lottery-panel">
+            <div className="settings-panel-head">
+              <div className="settings-title">
+                <Trophy size={18} />
+                <span>充值用户抽奖</span>
+              </div>
+              <span className="lottery-rule">仅统计已完成的余额充值订单</span>
+            </div>
+            <div className="lottery-form-grid">
+              <label>
+                抽奖名称
+                <input value={lotteryName} onChange={(event) => setLotteryName(event.target.value)} maxLength={120} />
+              </label>
+              <label>
+                开始时间
+                <input type="datetime-local" value={lotteryStart} onChange={(event) => { setLotteryStart(event.target.value); setLotteryEligibility(null); }} />
+              </label>
+              <label>
+                结束时间
+                <input type="datetime-local" value={lotteryEnd} onChange={(event) => { setLotteryEnd(event.target.value); setLotteryEligibility(null); }} />
+              </label>
+              <label>
+                最低充值金额
+                <input type="number" min="0.01" step="0.01" value={lotteryMinimum} onChange={(event) => { setLotteryMinimum(event.target.value); setLotteryEligibility(null); }} />
+              </label>
+              <label>
+                中奖人数
+                <input type="number" min="1" max="1000" step="1" value={lotteryWinnerCount} onChange={(event) => setLotteryWinnerCount(event.target.value)} />
+              </label>
+              <label>
+                每人中奖金额
+                <input type="number" min="0.01" max="1000000" step="0.01" value={lotteryPrizeAmount} onChange={(event) => setLotteryPrizeAmount(event.target.value)} />
+              </label>
+              <div className="lottery-actions">
+                <button className="ghost-btn" type="button" onClick={previewLottery} disabled={lotteryLoading}>
+                  <Search size={17} />
+                  {lotteryLoading ? '核验中...' : '预览名单（可选）'}
+                </button>
+                <button className="primary-btn" type="button" onClick={runLottery} disabled={lotteryLoading}>
+                  <Gift size={17} />
+                  开始抽奖
+                </button>
+              </div>
+            </div>
+            {lotteryEligibility && (
+              <div className="lottery-preview">
+                <div className="lottery-preview-summary">
+                  <strong>{lotteryEligibility.eligibleCount}</strong>
+                  <span>名用户符合条件{lotteryEligibility.truncated ? '，下方仅展示前 200 名' : ''}</span>
+                </div>
+                <div className="lottery-candidate-list">
+                  {lotteryEligibility.candidates.map((candidate) => (
+                    <span key={candidate.userId}>
+                      {lotteryUserDisplay(candidate.userName, candidate.userEmail)} · {Number(candidate.rechargeAmount).toFixed(2)} 元
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {lotteryDraws.length > 0 && (
+            <section className="table-panel lottery-history-panel">
+              <div className="settings-title">
+                <Trophy size={18} />
+                <span>抽奖记录</span>
+              </div>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>名称</th><th>抽奖条件</th><th>候选人数</th><th>中奖金额</th><th>中奖用户与发放状态</th><th>执行时间</th></tr>
+                  </thead>
+                  <tbody>
+                    {lotteryDraws.map((draw) => (
+                      <tr key={draw.id}>
+                        <td><strong>{draw.name}</strong><small>#{draw.id}</small></td>
+                        <td>
+                          <strong>{Number(draw.minRecharge).toFixed(2)} 元以上</strong>
+                          <small>{formatDateTime(draw.periodStart)} 至 {formatDateTime(draw.periodEnd)}</small>
+                        </td>
+                        <td>{draw.eligibleCount}</td>
+                        <td>{Number(draw.prizeAmount).toFixed(2)} 元 / 人</td>
+                        <td>
+                          <div className="lottery-winners">
+                            {draw.winners.map((winner) => (
+                              <span className={`lottery-award-${winner.awardStatus.toLowerCase()}`} key={winner.userId} title={winner.awardError || undefined}>
+                                {lotteryUserDisplay(winner.userName, winner.userEmail)} · {lotteryAwardStatusText(winner.awardStatus)}
+                              </span>
+                            ))}
+                          </div>
+                          {draw.winners.some((winner) => winner.awardStatus !== 'AWARDED') && (
+                            <button className="ghost-btn lottery-retry-btn" type="button" disabled={lotteryLoading} onClick={() => retryDrawAwards(draw)}>
+                              <RefreshCw size={15} />
+                              重试失败发放
+                            </button>
+                          )}
+                        </td>
+                        <td>{formatDateTime(draw.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           <section className="recharge-reward-stats">
             <article className="recharge-reward-total">
               <span>总返利金额</span>
