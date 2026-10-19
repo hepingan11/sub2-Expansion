@@ -6,7 +6,7 @@ import { FolderOpen, LogOut } from "lucide-react";
 
 import { AgentPanel } from "@/components/agent/agent-panel";
 import { AppTopNav } from "@/components/layout/app-top-nav";
-import { getLocalFolder, pickLocalFolder, verifyLocalFolder } from "@/services/local-folder";
+import { getLocalFolder, isLocalFolderPickerCancelled, pickLocalFolder, verifyLocalFolder } from "@/services/local-folder";
 import { useUserStore } from "@/stores/use-user-store";
 
 export default function UserLayout({ children }: { children: ReactNode }) {
@@ -41,7 +41,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                     <h1 className="text-xl font-semibold">连接本地工作区</h1>
                     <p className="mt-3 text-sm leading-6 text-stone-500">登录后必须连接自己电脑上的文件夹，画布和素材会按账号隔离保存。</p>
                     <div className="mt-6 flex justify-center gap-2">
-                        <Button type="primary" onClick={() => void pickLocalFolder().then(() => setFolderReady(true)).catch((error) => message.error(error instanceof Error ? error.message : "连接失败"))}>选择文件夹</Button>
+                        <Button type="primary" onClick={() => void pickLocalFolder().then(() => setFolderReady(true)).catch((error) => { if (!isLocalFolderPickerCancelled(error)) message.error(error instanceof Error ? error.message : "连接失败"); })}>选择文件夹</Button>
                         <Button icon={<LogOut className="size-4" />} onClick={() => void logout().then(() => navigate("/login", { replace: true }))}>退出登录</Button>
                     </div>
                 </div>

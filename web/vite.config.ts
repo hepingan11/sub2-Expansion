@@ -39,9 +39,11 @@ function localPluginsManifest(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, webDir, "");
-    const sub2apiUrl = process.env.VITE_SUB2API_URL || env.VITE_SUB2API_URL;
+    const projectDir = resolve(webDir, "..");
+    const env = loadEnv(mode, projectDir, "");
+    const sub2apiUrl = process.env.VITE_SUB2API_URL || env.VITE_SUB2API_URL || env.SUB2API_URL;
     return {
+        envDir: projectDir,
         base: process.env.VITE_BASE || env.VITE_BASE || "/",
         plugins: [react(), localPluginsManifest()],
         resolve: {
@@ -50,6 +52,7 @@ export default defineConfig(({ mode }) => {
             },
         },
         define: {
+            "import.meta.env.VITE_SUB2API_URL": JSON.stringify(sub2apiUrl || ""),
             __APP_VERSION__: JSON.stringify(localVersion),
             __APP_RELEASES__: JSON.stringify(parseChangelog(localChangelog)),
         },

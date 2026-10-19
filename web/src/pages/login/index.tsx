@@ -3,7 +3,6 @@ import { ArrowRight, FolderOpen, LogIn } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SUB2API_URL } from "@/constant/runtime-config";
-import { pickLocalFolder } from "@/services/local-folder";
 import { useUserStore } from "@/stores/use-user-store";
 
 type LoginValues = { email: string; password: string };
@@ -17,7 +16,6 @@ export default function LoginPage() {
         setLoading(true);
         try {
             await login(email, password);
-            try { await pickLocalFolder(); } catch { /* UserLayout will offer the picker again. */ }
             message.success("登录成功");
             navigate("/canvas", { replace: true });
         } catch (error) {
@@ -41,7 +39,7 @@ export default function LoginPage() {
                     <Form<LoginValues> layout="vertical" requiredMark={false} onFinish={submit} autoComplete="on">
                         <Form.Item name="email" label="邮箱" rules={[{ required: true, type: "email", message: "请输入有效邮箱" }]}><Input size="large" prefix={<LogIn className="size-4 text-stone-400" />} autoComplete="username" /></Form.Item>
                         <Form.Item name="password" label="密码" rules={[{ required: true, message: "请输入密码" }]}><Input.Password size="large" autoComplete="current-password" /></Form.Item>
-                        <Button htmlType="submit" type="primary" size="large" block loading={loading} icon={<ArrowRight className="size-4" />} iconPosition="end">登录并连接文件夹</Button>
+                        <Button htmlType="submit" type="primary" size="large" block loading={loading} icon={<ArrowRight className="size-4" />} iconPosition="end">登录</Button>
                     </Form>
                     <div className="mt-8 border-t border-stone-200 pt-5 text-xs leading-5 text-stone-500 dark:border-stone-700"><FolderOpen className="mr-2 inline size-4" />文件夹权限只授予当前浏览器，不会上传文件内容。{SUB2API_URL ? ` 当前服务：${new URL(SUB2API_URL).hostname}` : "管理员尚未配置 sub2api 服务地址。"}</div>
                 </div>
